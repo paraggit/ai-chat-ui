@@ -32,8 +32,11 @@ export function sendError(res, message) {
   res.write(`data: ${JSON.stringify({ error: message })}\n\n`);
 }
 
+export function sendImage(res, image) {
+  res.write(`data: ${JSON.stringify({ image })}\n\n`);
+}
+
 /**
- * Signal stream completion.
  * @param {import('express').Response} res
  */
 export function sendDone(res) {

@@ -3,19 +3,17 @@ import { getSessionId, resetSessionId } from '../utils/session.js';
 import { toApiPayload } from '../utils/modelSettings.js';
 
 /**
- * @typedef {{ id: string, role: 'user' | 'assistant', content: string, streaming?: boolean }} Message
+ * @typedef {{
+ *   id: string,
+ *   role: 'user' | 'assistant',
+ *   content: string,
+ *   images?: string[],
+ *   streaming?: boolean,
+ * }} Message
  */
 
 /**
- * @param {{ apiKey: string, model: string, endpoint: string }} modelSettings
- * @returns {{
- *   messages: Message[],
- *   isLoading: boolean,
- *   error: string | null,
- *   sessionId: string,
- *   sendMessage: (text: string) => Promise<void>,
- *   clearChat: () => Promise<void>,
- * }}
+ * @param {import('../utils/modelSettings.js').loadModelSettings extends () => infer R ? R : never} modelSettings
  */
 export function useChat(modelSettings) {
   const [messages, setMessages] = useState(/** @type {Message[]} */ ([]));
@@ -32,7 +30,8 @@ export function useChat(modelSettings) {
       const history = (data.history ?? []).map((m, i) => ({
         id: `${sid}-${i}`,
         role: m.role,
-        content: m.content,
+        content: m.content ?? '',
+        images: m.images,
       }));
       setMessages(history);
     } catch {
@@ -45,9 +44,9 @@ export function useChat(modelSettings) {
   }, [sessionId, loadHistory]);
 
   const sendMessage = useCallback(
-    async (text) => {
+    async (text, images = []) => {
       const trimmed = text.trim();
-      if (!trimmed || isLoading) return;
+      if ((!trimmed && images.length === 0) || isLoading) return;
 
       setError(null);
       setIsLoading(true);
@@ -56,12 +55,14 @@ export function useChat(modelSettings) {
         id: crypto.randomUUID(),
         role: 'user',
         content: trimmed,
+        images: images.length > 0 ? images : undefined,
       });
 
       const assistantMsg = /** @type {Message} */ ({
         id: crypto.randomUUID(),
         role: 'assistant',
         content: '',
+        images: [],
         streaming: true,
       });
 
@@ -78,6 +79,7 @@ export function useChat(modelSettings) {
           body: JSON.stringify({
             message: trimmed,
             sessionId,
+            images,
             ...toApiPayload(modelSettings),
           }),
           signal: controller.signal,
@@ -122,6 +124,15 @@ export function useChat(modelSettings) {
                   prev.map((m) =>
                     m.id === assistantMsg.id
                       ? { ...m, content: m.content + parsed.token }
+                      : m
+                  )
+                );
+              }
+              if (parsed.image) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantMsg.id
+                      ? { ...m, images: [...(m.images ?? []), parsed.image] }
                       : m
                   )
                 );

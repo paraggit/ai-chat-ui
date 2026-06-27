@@ -22,7 +22,7 @@ app.use(
     credentials: true,
   })
 );
-app.use(express.json({ limit: '1mb' }));
+app.use(express.json({ limit: '20mb' }));
 app.use(rateLimit);
 
 app.use('/api', chatRoutes);

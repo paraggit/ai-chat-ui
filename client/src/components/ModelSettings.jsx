@@ -23,6 +23,8 @@ export default function ModelSettings({ settings, configured, onSave }) {
       apiKey: draft.apiKey.trim(),
       model: draft.model.trim(),
       endpoint: draft.endpoint.trim(),
+      visionModel: draft.visionModel.trim(),
+      imageGenModel: draft.imageGenModel.trim(),
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -111,6 +113,40 @@ export default function ModelSettings({ settings, configured, onSave }) {
             />
             <p className="mt-1 text-[10px] leading-snug text-gray-400">
               Leave empty to use the public HF Inference API with the model ID above.
+            </p>
+          </div>
+
+          <div>
+            <label htmlFor="hf-vision-model" className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">
+              Vision model
+            </label>
+            <input
+              id="hf-vision-model"
+              type="text"
+              value={draft.visionModel}
+              onChange={(e) => setDraft((prev) => ({ ...prev, visionModel: e.target.value }))}
+              placeholder="Salesforce/blip-vqa-base"
+              className="w-full rounded-md border border-gray-200 bg-surface-secondary px-2.5 py-2 font-mono text-xs outline-none focus:border-accent dark:border-gray-600 dark:bg-surface-dark-secondary"
+            />
+            <p className="mt-1 text-[10px] leading-snug text-gray-400">
+              Used when you upload images to chat.
+            </p>
+          </div>
+
+          <div>
+            <label htmlFor="hf-image-gen-model" className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">
+              Image generation model
+            </label>
+            <input
+              id="hf-image-gen-model"
+              type="text"
+              value={draft.imageGenModel}
+              onChange={(e) => setDraft((prev) => ({ ...prev, imageGenModel: e.target.value }))}
+              placeholder="stabilityai/stable-diffusion-2-1"
+              className="w-full rounded-md border border-gray-200 bg-surface-secondary px-2.5 py-2 font-mono text-xs outline-none focus:border-accent dark:border-gray-600 dark:bg-surface-dark-secondary"
+            />
+            <p className="mt-1 text-[10px] leading-snug text-gray-400">
+              Used for &quot;generate an image of…&quot; or /image prompts.
             </p>
           </div>
 

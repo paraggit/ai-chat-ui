@@ -111,17 +111,39 @@ You can configure the Hugging Face connection in two ways:
    - **API key** — your Hugging Face token (`hf_...`)
    - **Model ID** — e.g. `mistralai/Mistral-7B-Instruct-v0.2`
    - **Custom endpoint** — optional deployed Inference Endpoint URL
+   - **Vision model** — e.g. `Salesforce/blip-vqa-base` (for uploaded images)
+   - **Image generation model** — e.g. `stabilityai/stable-diffusion-2-1`
 
    Settings are saved in `localStorage` and sent with each chat request.
 
 2. **Server environment** — Set `HF_TOKEN`, `HF_MODEL`, and optionally `HF_API_BASE` in `.env` as fallbacks when the UI does not provide values.
+
+## Image Chat
+
+### Upload images (vision)
+
+- Click the **image icon** in the chat input to attach up to 4 images (JPEG, PNG, GIF, WebP, max 5 MB each).
+- Add a question like “What is in this image?” or send image-only (auto-prompt: describe the image).
+- Uses the **Vision model** from settings (default: `Salesforce/blip-vqa-base`).
+
+### Generate images in responses
+
+Ask the model to create an image using natural language or a slash command:
+
+- `generate an image of a cat on the moon`
+- `/image a futuristic city at night`
+- `/draw a watercolor landscape`
+
+Uses the **Image generation model** from settings (default: `stabilityai/stable-diffusion-2-1`). Generated images appear inline in the assistant message.
 
 ## Environment Variables
 
 | Variable        | Required | Default                              | Description                    |
 |-----------------|----------|--------------------------------------|--------------------------------|
 | `HF_TOKEN`      | No*     | —                                    | Server fallback API token      |
-| `HF_MODEL`      | No       | `mistralai/Mistral-7B-Instruct-v0.2` | Model ID on HF Hub             |
+| `HF_MODEL`      | No       | `mistralai/Mistral-7B-Instruct-v0.2` | Text chat model ID             |
+| `HF_VISION_MODEL` | No     | `Salesforce/blip-vqa-base`           | Vision / image Q&A model       |
+| `HF_IMAGE_GEN_MODEL` | No  | `stabilityai/stable-diffusion-2-1` | Text-to-image model            |
 | `HF_TIMEOUT_MS` | No       | `15000`                              | API request timeout (ms)       |
 | `PORT`          | No       | `3001`                               | Server port                    |
 | `CLIENT_ORIGIN` | No       | `http://localhost:5173`              | CORS allowed origin            |
@@ -143,8 +165,13 @@ To use a deployed HF Inference Endpoint instead of the public API, set `HF_MODEL
 
 ```json
 {
-  "message": "Hello, how are you?",
-  "sessionId": "abc123"
+  "message": "What is in this image?",
+  "sessionId": "abc123",
+  "images": ["data:image/png;base64,..."],
+  "hfToken": "hf_...",
+  "model": "mistralai/Mistral-7B-Instruct-v0.2",
+  "visionModel": "Salesforce/blip-vqa-base",
+  "imageGenModel": "stabilityai/stable-diffusion-2-1"
 }
 ```
 
@@ -153,6 +180,7 @@ To use a deployed HF Inference Endpoint instead of the public API, set `HF_MODEL
 ```
 data: {"token":"Hello"}
 data: {"token":" there"}
+data: {"image":"data:image/png;base64,..."}
 data: [DONE]
 ```
 

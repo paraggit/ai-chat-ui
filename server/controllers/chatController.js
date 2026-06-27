@@ -1,6 +1,7 @@
 import { sessionStore } from '../services/sessionStore.js';
 import { chat, getFallbackResponse, resolveHFConfig } from '../services/hfService.js';
-import { initSSE, sendError, sendDone, simulateStream } from '../utils/stream.js';
+import { sanitizeImages } from '../utils/images.js';
+import { initSSE, sendError, sendDone, sendImage, simulateStream } from '../utils/stream.js';
 
 /**
  * Handle streaming chat via SSE.
@@ -8,10 +9,22 @@ import { initSSE, sendError, sendDone, simulateStream } from '../utils/stream.js
  * @param {import('express').Response} res
  */
 export async function streamChat(req, res) {
-  const { message, sessionId, hfToken, model, endpoint } = req.body ?? {};
+  const {
+    message,
+    sessionId,
+    images,
+    hfToken,
+    model,
+    endpoint,
+    visionModel,
+    imageGenModel,
+  } = req.body ?? {};
 
-  if (!message || typeof message !== 'string' || !message.trim()) {
-    return res.status(400).json({ error: 'message is required' });
+  const sanitizedImages = sanitizeImages(images);
+  const trimmedMessage = typeof message === 'string' ? message.trim() : '';
+
+  if (!trimmedMessage && sanitizedImages.length === 0) {
+    return res.status(400).json({ error: 'message or images required' });
   }
 
   if (!sessionId || typeof sessionId !== 'string') {
@@ -24,15 +37,20 @@ export async function streamChat(req, res) {
       token: typeof hfToken === 'string' ? hfToken.trim() : undefined,
       model: typeof model === 'string' ? model.trim() : undefined,
       endpoint: typeof endpoint === 'string' ? endpoint.trim() : undefined,
+      visionModel: typeof visionModel === 'string' ? visionModel.trim() : undefined,
+      imageGenModel: typeof imageGenModel === 'string' ? imageGenModel.trim() : undefined,
     });
   } catch (error) {
     return res.status(400).json({ error: error.message });
   }
 
-  const trimmedMessage = message.trim();
   const history = sessionStore.getHistory(sessionId);
 
-  sessionStore.appendMessage(sessionId, { role: 'user', content: trimmedMessage });
+  sessionStore.appendMessage(sessionId, {
+    role: 'user',
+    content: trimmedMessage,
+    images: sanitizedImages.length > 0 ? sanitizedImages : undefined,
+  });
 
   initSSE(res);
 
@@ -43,11 +61,24 @@ export async function streamChat(req, res) {
   });
 
   let fullResponse = '';
+  let responseImages = [];
 
   try {
-    fullResponse = await chat(history, trimmedMessage, hfConfig);
+    const result = await chat(history, trimmedMessage, hfConfig, sanitizedImages);
+    fullResponse = result.text;
+    responseImages = result.images;
+
     await simulateStream(res, fullResponse);
-    sessionStore.appendMessage(sessionId, { role: 'assistant', content: fullResponse });
+
+    for (const image of responseImages) {
+      sendImage(res, image);
+    }
+
+    sessionStore.appendMessage(sessionId, {
+      role: 'assistant',
+      content: fullResponse,
+      images: responseImages.length > 0 ? responseImages : undefined,
+    });
     sendDone(res);
   } catch (error) {
     console.error('[chatController] HF error:', error.message);
@@ -101,6 +132,8 @@ export function healthCheck(_req, res) {
     status: 'ok',
     service: 'HF Chat Pro',
     model: process.env.HF_MODEL || 'mistralai/Mistral-7B-Instruct-v0.2',
+    visionModel: process.env.HF_VISION_MODEL || 'Salesforce/blip-vqa-base',
+    imageGenModel: process.env.HF_IMAGE_GEN_MODEL || 'stabilityai/stable-diffusion-2-1',
     timestamp: new Date().toISOString(),
   });
 }
