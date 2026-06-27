@@ -7,11 +7,14 @@
  * @param {import('express').Response} res
  */
 export function initSSE(res) {
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-cache, no-transform');
   res.setHeader('Connection', 'keep-alive');
   res.setHeader('X-Accel-Buffering', 'no');
   res.flushHeaders?.();
+  // SSE comment keeps some proxies from buffering the connection
+  res.write(': connected\n\n');
+  res.flush?.();
 }
 
 /**
@@ -34,6 +37,31 @@ export function sendError(res, message) {
 
 export function sendImage(res, image) {
   res.write(`data: ${JSON.stringify({ image })}\n\n`);
+}
+
+/**
+ * Send a status update over SSE (shown while waiting for the model).
+ * @param {import('express').Response} res
+ * @param {string} status
+ */
+export function sendStatus(res, status) {
+  res.write(`data: ${JSON.stringify({ status })}\n\n`);
+  res.flush?.();
+}
+
+/**
+ * Send the complete assistant message in one SSE event (reliable fallback for the UI).
+ * @param {import('express').Response} res
+ * @param {string} message
+ * @param {Record<string, unknown> | null | undefined} [metadata]
+ */
+export function sendMessage(res, message, metadata) {
+  const payload = { message };
+  if (metadata && Object.keys(metadata).length > 0) {
+    payload.metadata = metadata;
+  }
+  res.write(`data: ${JSON.stringify(payload)}\n\n`);
+  res.flush?.();
 }
 
 /**

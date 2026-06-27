@@ -165,7 +165,16 @@ Uses the **Image generation model** from settings (default: `stabilityai/stable-
 
 ### Custom Inference Endpoint
 
-To use a deployed HF Inference Endpoint instead of the public API, set `HF_MODEL` to your endpoint URL path or modify `hfService.js` to point at your endpoint base URL.
+To use a **dedicated Hugging Face Inference Endpoint** (e.g. `https://xxx.us-east-1.aws.endpoints.huggingface.cloud`):
+
+1. Paste the full endpoint URL in **Custom endpoint** in sidebar settings
+2. Set **Model ID** to your deployed model name (for OpenAI-compatible requests)
+3. Use a token with access to that endpoint
+4. **Wait 1–3 minutes** on cold start — the UI shows status updates while the model loads
+
+The app automatically tries multiple API formats against your endpoint (`/v1/chat/completions`, TGI `inputs`, `/generate`).
+
+Vision and image generation still use the public Inference Providers router (not your LLM endpoint).
 
 ## API Reference
 

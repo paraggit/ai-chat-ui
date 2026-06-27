@@ -28,6 +28,17 @@ export default defineConfig({
         target: apiTarget,
         changeOrigin: true,
         secure: false,
+        timeout: 600000,
+        proxyTimeout: 600000,
+        configure: (proxy) => {
+          proxy.on('proxyRes', (proxyRes, req) => {
+            if (req.url?.includes('/chat') && proxyRes.headers) {
+              proxyRes.headers['cache-control'] = 'no-cache, no-transform';
+              proxyRes.headers['x-accel-buffering'] = 'no';
+              proxyRes.headers['content-type'] = 'text/event-stream; charset=utf-8';
+            }
+          });
+        },
       },
     },
   },

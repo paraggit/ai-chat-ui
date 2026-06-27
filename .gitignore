@@ -15,6 +15,7 @@ client/dist/
 dist/
 
 # Logs
+log
 *.log
 npm-debug.log*
 

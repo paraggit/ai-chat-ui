@@ -1,10 +1,25 @@
 import { useEffect, useState } from 'react';
+import { DEFAULT_MAX_TOKENS } from '../utils/modelSettings.js';
 
 /**
  * @param {{
- *   settings: { apiKey: string, model: string, endpoint: string },
+ *   settings: {
+ *     apiKey: string,
+ *     model: string,
+ *     endpoint: string,
+ *     visionModel: string,
+ *     imageGenModel: string,
+ *     maxTokens: number,
+ *   },
  *   configured: boolean,
- *   onSave: (settings: { apiKey: string, model: string, endpoint: string }) => void,
+ *   onSave: (settings: {
+ *     apiKey: string,
+ *     model: string,
+ *     endpoint: string,
+ *     visionModel: string,
+ *     imageGenModel: string,
+ *     maxTokens: number,
+ *   }) => void,
  * }} props
  */
 export default function ModelSettings({ settings, configured, onSave }) {
@@ -25,6 +40,10 @@ export default function ModelSettings({ settings, configured, onSave }) {
       endpoint: draft.endpoint.trim(),
       visionModel: draft.visionModel.trim(),
       imageGenModel: draft.imageGenModel.trim(),
+      maxTokens:
+        Number.isFinite(Number(draft.maxTokens)) && Number(draft.maxTokens) > 0
+          ? Math.floor(Number(draft.maxTokens))
+          : DEFAULT_MAX_TOKENS,
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -96,6 +115,31 @@ export default function ModelSettings({ settings, configured, onSave }) {
             />
             <p className="mt-1 text-[10px] leading-snug text-gray-400">
               Hugging Face model name for the Inference API.
+            </p>
+          </div>
+
+          <div>
+            <label htmlFor="hf-max-tokens" className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">
+              Max tokens
+            </label>
+            <input
+              id="hf-max-tokens"
+              type="number"
+              min={256}
+              max={32768}
+              step={256}
+              value={draft.maxTokens}
+              onChange={(e) =>
+                setDraft((prev) => ({
+                  ...prev,
+                  maxTokens: e.target.value === '' ? '' : Number(e.target.value),
+                }))
+              }
+              className="w-full rounded-md border border-gray-200 bg-surface-secondary px-2.5 py-2 font-mono text-xs outline-none focus:border-accent dark:border-gray-600 dark:bg-surface-dark-secondary"
+            />
+            <p className="mt-1 text-[10px] leading-snug text-gray-400">
+              Maximum length of each reply. Use 4096+ for reasoning models; lower values truncate
+              answers mid-sentence.
             </p>
           </div>
 

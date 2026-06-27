@@ -1,9 +1,8 @@
 import { useState } from 'react';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
-import { oneDark, oneLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import TypingIndicator from './TypingIndicator.jsx';
+import MetadataModal, { hasMetadata } from './MetadataModal.jsx';
+import MarkdownContent from './MarkdownContent.jsx';
+import ReasoningBlock, { getReasoning } from './ReasoningBlock.jsx';
 
 /**
  * @param {{ src: string, alt: string, isUser?: boolean }} props
@@ -27,16 +26,22 @@ function MessageImages({ src, alt, isUser }) {
  *     role: string,
  *     content: string,
  *     images?: string[],
+ *     metadata?: Record<string, unknown>,
  *     streaming?: boolean,
+ *     status?: string,
  *   },
  *   isDark: boolean,
  * }} props
  */
 export default function MessageBubble({ message, isDark }) {
   const [copied, setCopied] = useState(false);
+  const [showMetadata, setShowMetadata] = useState(false);
   const isUser = message.role === 'user';
-  const showTyping = message.streaming && !message.content && !(message.images?.length);
+  const showTyping = message.streaming && !message.content && !reasoning && !(message.images?.length);
   const images = message.images ?? [];
+  const statusText = message.status;
+  const metadataAvailable = hasMetadata(message.metadata);
+  const reasoning = getReasoning(message.metadata);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(message.content);
@@ -45,94 +50,113 @@ export default function MessageBubble({ message, isDark }) {
   };
 
   return (
-    <div className={`group flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}>
-      <div
-        className={`relative max-w-[85%] rounded-2xl px-4 py-3 ${
-          isUser
-            ? 'bg-accent text-white'
-            : 'bg-white dark:bg-surface-dark border border-gray-200 dark:border-gray-700'
-        }`}
-      >
-        {!isUser && message.content && !message.streaming && (
-          <button
-            type="button"
-            onClick={handleCopy}
-            className="absolute -top-2 -right-2 hidden rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-600 shadow group-hover:block dark:bg-gray-700 dark:text-gray-300"
-            title="Copy message"
-          >
-            {copied ? 'Copied!' : 'Copy'}
-          </button>
-        )}
-
-        {showTyping ? (
-          <TypingIndicator />
-        ) : (
-          <div className="space-y-2">
-            {images.length > 0 && (
-              <div className={`flex flex-wrap gap-2 ${message.content ? 'mb-2' : ''}`}>
-                {images.map((src, index) => (
-                  <MessageImages
-                    key={`${message.id}-img-${index}`}
-                    src={src}
-                    alt={`${isUser ? 'Uploaded' : 'Generated'} image ${index + 1}`}
-                    isUser={isUser}
-                  />
-                ))}
-              </div>
-            )}
-
-            {isUser ? (
-              message.content ? (
-                <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</p>
-              ) : null
-            ) : message.content ? (
-              <div className="prose prose-sm dark:prose-invert max-w-none">
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
-                  components={{
-                    code({ inline, className, children, ...props }) {
-                      const match = /language-(\w+)/.exec(className || '');
-                      const code = String(children).replace(/\n$/, '');
-
-                      if (!inline && match) {
-                        return (
-                          <SyntaxHighlighter
-                            style={isDark ? oneDark : oneLight}
-                            language={match[1]}
-                            PreTag="div"
-                            customStyle={{
-                              borderRadius: '0.5rem',
-                              fontSize: '0.8125rem',
-                              margin: '0.5rem 0',
-                            }}
-                            {...props}
-                          >
-                            {code}
-                          </SyntaxHighlighter>
-                        );
-                      }
-
-                      return (
-                        <code
-                          className="rounded bg-gray-100 px-1 py-0.5 text-sm dark:bg-gray-800"
-                          {...props}
-                        >
-                          {children}
-                        </code>
-                      );
-                    },
-                  }}
+    <>
+      <div className={`group flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}>
+        <div
+          className={`relative max-w-[85%] rounded-2xl px-4 py-3 ${
+            isUser
+              ? 'bg-accent text-white'
+              : 'bg-white dark:bg-surface-dark border border-gray-200 dark:border-gray-700'
+          }`}
+        >
+          {!isUser && (message.content || reasoning) && !message.streaming && (
+            <div className="absolute -top-2 -right-2 hidden gap-1 group-hover:flex">
+              {metadataAvailable && (
+                <button
+                  type="button"
+                  onClick={() => setShowMetadata(true)}
+                  className="rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-600 shadow dark:bg-gray-700 dark:text-gray-300"
+                  title="View metadata"
                 >
-                  {message.content}
-                </ReactMarkdown>
-                {message.streaming && (
-                  <span className="inline-block h-4 w-1 animate-pulse bg-accent ml-0.5 align-middle" />
-                )}
-              </div>
-            ) : null}
-          </div>
-        )}
+                  Info
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleCopy}
+                className="rounded-md bg-gray-100 px-2 py-1 text-xs text-gray-600 shadow dark:bg-gray-700 dark:text-gray-300"
+                title="Copy message"
+              >
+                {copied ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+          )}
+
+          {showTyping ? (
+            <div>
+              <TypingIndicator />
+              {statusText && <p className="mt-1 text-xs opacity-80">{statusText}</p>}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {images.length > 0 && (
+                <div className={`flex flex-wrap gap-2 ${message.content ? 'mb-2' : ''}`}>
+                  {images.map((src, index) => (
+                    <MessageImages
+                      key={`${message.id}-img-${index}`}
+                      src={src}
+                      alt={`${isUser ? 'Uploaded' : 'Generated'} image ${index + 1}`}
+                      isUser={isUser}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {isUser ? (
+                message.content ? (
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</p>
+                ) : null
+              ) : message.content || reasoning ? (
+                <>
+                  {reasoning && (
+                    <ReasoningBlock reasoning={reasoning} streaming={message.streaming} />
+                  )}
+                  {message.content ? (
+                    <MarkdownContent
+                      content={message.content}
+                      isDark={isDark}
+                      streaming={message.streaming}
+                    />
+                  ) : message.streaming ? (
+                    <TypingIndicator />
+                  ) : null}
+                </>
+              ) : (
+                <p className="text-sm italic opacity-70">No response received.</p>
+              )}
+
+              {!isUser && message.metadata?.finishReason === 'length' && !message.streaming && (
+                <p className="text-xs italic text-amber-600 dark:text-amber-400">
+                  Response was cut off at the token limit. Increase Max tokens in Model settings for
+                  longer replies.
+                </p>
+              )}
+
+              {!isUser && metadataAvailable && !message.streaming && (
+                <button
+                  type="button"
+                  onClick={() => setShowMetadata(true)}
+                  className="mt-1 inline-flex items-center gap-1 rounded-md border border-gray-200 px-2 py-1 text-xs text-gray-500 transition hover:bg-gray-50 dark:border-gray-600 dark:text-gray-400 dark:hover:bg-gray-800"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                    />
+                  </svg>
+                  View metadata
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+
+      {showMetadata && metadataAvailable && (
+        <MetadataModal metadata={message.metadata} onClose={() => setShowMetadata(false)} />
+      )}
+    </>
   );
 }

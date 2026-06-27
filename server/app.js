@@ -15,10 +15,17 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 3001;
 const CLIENT_ORIGIN = process.env.CLIENT_ORIGIN || 'http://localhost:5173';
+const DEV_ORIGINS = ['http://localhost:5173', 'https://localhost:5173'];
 
 app.use(
   cors({
-    origin: CLIENT_ORIGIN,
+    origin(origin, callback) {
+      if (!origin || origin === CLIENT_ORIGIN || DEV_ORIGINS.includes(origin)) {
+      callback(null, true);
+      return;
+    }
+    callback(null, false);
+    },
     credentials: true,
   })
 );

@@ -14,6 +14,25 @@
   }
 }
 
+@layer components {
+  .markdown-content pre {
+    @apply m-0 bg-transparent p-0;
+  }
+
+  .markdown-content :not(pre) > code {
+    @apply break-words;
+  }
+
+  .code-block pre,
+  .code-block code {
+    @apply font-mono;
+  }
+
+  .code-block .linenumber {
+    @apply select-none pr-4 text-gray-400 dark:text-gray-500;
+  }
+}
+
 @layer utilities {
   .scrollbar-thin {
     scrollbar-width: thin;

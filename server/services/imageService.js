@@ -32,7 +32,8 @@ function bufferToDataUrl(buffer, mimeType) {
  */
 export async function analyzeImages(images, question, config) {
   const visionModel = config.visionModel;
-  const url = buildInferenceModelUrl(visionModel, config.endpoint || undefined);
+  // Vision always uses the public router — not the custom LLM endpoint
+  const url = buildInferenceModelUrl(visionModel);
   const answers = [];
 
   for (let i = 0; i < images.length; i += 1) {
@@ -90,7 +91,7 @@ export async function analyzeImages(images, question, config) {
  * @returns {Promise<string>} data URL
  */
 export async function generateImage(prompt, config) {
-  const url = buildInferenceModelUrl(config.imageGenModel, config.endpoint || undefined);
+  const url = buildInferenceModelUrl(config.imageGenModel);
 
   let lastError;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {

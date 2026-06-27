@@ -1,7 +1,7 @@
 import { sessionStore } from '../services/sessionStore.js';
 import { chat, getFallbackResponse, resolveHFConfig } from '../services/hfService.js';
 import { sanitizeImages } from '../utils/images.js';
-import { initSSE, sendError, sendDone, sendImage, simulateStream } from '../utils/stream.js';
+import { initSSE, sendError, sendDone, sendImage, sendMessage as sendFullMessage, sendStatus } from '../utils/stream.js';
 
 /**
  * Handle streaming chat via SSE.
@@ -18,6 +18,7 @@ export async function streamChat(req, res) {
     endpoint,
     visionModel,
     imageGenModel,
+    maxTokens,
   } = req.body ?? {};
 
   const sanitizedImages = sanitizeImages(images);
@@ -39,6 +40,7 @@ export async function streamChat(req, res) {
       endpoint: typeof endpoint === 'string' ? endpoint.trim() : undefined,
       visionModel: typeof visionModel === 'string' ? visionModel.trim() : undefined,
       imageGenModel: typeof imageGenModel === 'string' ? imageGenModel.trim() : undefined,
+      maxTokens,
     });
   } catch (error) {
     return res.status(400).json({ error: error.message });
@@ -53,22 +55,37 @@ export async function streamChat(req, res) {
   });
 
   initSSE(res);
+  sendStatus(res, hfConfig.endpoint ? 'Connecting to your inference endpoint…' : 'Generating response…');
 
-  req.on('close', () => {
-    if (!res.writableEnded) {
-      res.end();
-    }
+  req.on('aborted', () => {
+    console.warn('[chatController] Client disconnected during request');
   });
 
   let fullResponse = '';
+  let responseMetadata = null;
   let responseImages = [];
 
   try {
     const result = await chat(history, trimmedMessage, hfConfig, sanitizedImages);
-    fullResponse = result.text;
+
+    fullResponse = result.text || 'Done.';
+    responseMetadata = result.metadata;
     responseImages = result.images;
 
-    await simulateStream(res, fullResponse);
+    if (res.writableEnded) {
+      console.warn('[chatController] Response already closed before streaming');
+      sessionStore.appendMessage(sessionId, {
+        role: 'assistant',
+        content: fullResponse,
+        metadata: responseMetadata ?? undefined,
+        images: responseImages.length > 0 ? responseImages : undefined,
+      });
+      return;
+    }
+
+    console.log(`[chatController] Streaming ${fullResponse.length} chars to client`);
+    sendStatus(res, 'Streaming reply…');
+    sendFullMessage(res, fullResponse, responseMetadata);
 
     for (const image of responseImages) {
       sendImage(res, image);
@@ -77,13 +94,20 @@ export async function streamChat(req, res) {
     sessionStore.appendMessage(sessionId, {
       role: 'assistant',
       content: fullResponse,
+      metadata: responseMetadata ?? undefined,
       images: responseImages.length > 0 ? responseImages : undefined,
     });
     sendDone(res);
   } catch (error) {
+    if (res.writableEnded) {
+      console.warn('[chatController] Response closed during error handling');
+      return;
+    }
+
     console.error('[chatController] HF error:', error.message);
     fullResponse = getFallbackResponse(error);
-    await simulateStream(res, fullResponse);
+    sendStatus(res, 'Request failed');
+    sendFullMessage(res, fullResponse);
     sessionStore.appendMessage(sessionId, { role: 'assistant', content: fullResponse });
     sendError(res, error.message);
     sendDone(res);

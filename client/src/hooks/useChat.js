@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getSessionId, resetSessionId } from '../utils/session.js';
 import { toApiPayload } from '../utils/modelSettings.js';
+import { apiUrl } from '../utils/api.js';
 
 /**
  * @typedef {{
@@ -9,6 +10,8 @@ import { toApiPayload } from '../utils/modelSettings.js';
  *   content: string,
  *   images?: string[],
  *   streaming?: boolean,
+ *   status?: string,
+ *   metadata?: Record<string, unknown>,
  * }} Message
  */
 
@@ -21,10 +24,12 @@ export function useChat(modelSettings) {
   const [error, setError] = useState(/** @type {string | null} */ (null));
   const [sessionId, setSessionId] = useState(getSessionId);
   const abortRef = useRef(/** @type {AbortController | null} */ (null));
+  const isSendingRef = useRef(false);
 
   const loadHistory = useCallback(async (sid) => {
+    if (isSendingRef.current) return;
     try {
-      const res = await fetch(`/api/chat/${sid}`);
+      const res = await fetch(apiUrl(`/api/chat/${sid}`));
       if (!res.ok) return;
       const data = await res.json();
       const history = (data.history ?? []).map((m, i) => ({
@@ -32,6 +37,7 @@ export function useChat(modelSettings) {
         role: m.role,
         content: m.content ?? '',
         images: m.images,
+        metadata: m.metadata,
       }));
       setMessages(history);
     } catch {
@@ -50,6 +56,7 @@ export function useChat(modelSettings) {
 
       setError(null);
       setIsLoading(true);
+      isSendingRef.current = true;
 
       const userMsg = /** @type {Message} */ ({
         id: crypto.randomUUID(),
@@ -64,6 +71,7 @@ export function useChat(modelSettings) {
         content: '',
         images: [],
         streaming: true,
+        status: 'Sending…',
       });
 
       setMessages((prev) => [...prev, userMsg, assistantMsg]);
@@ -73,7 +81,7 @@ export function useChat(modelSettings) {
       abortRef.current = controller;
 
       try {
-        const res = await fetch('/api/chat', {
+        const res = await fetch(apiUrl('/api/chat'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -119,11 +127,32 @@ export function useChat(modelSettings) {
 
             try {
               const parsed = JSON.parse(payload);
+              if (parsed.status) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantMsg.id ? { ...m, status: parsed.status } : m
+                  )
+                );
+              }
+              if (parsed.message) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantMsg.id
+                      ? {
+                          ...m,
+                          content: parsed.message,
+                          metadata: parsed.metadata ?? m.metadata,
+                          status: undefined,
+                        }
+                      : m
+                  )
+                );
+              }
               if (parsed.token) {
                 setMessages((prev) =>
                   prev.map((m) =>
                     m.id === assistantMsg.id
-                      ? { ...m, content: m.content + parsed.token }
+                      ? { ...m, content: m.content + parsed.token, status: undefined }
                       : m
                   )
                 );
@@ -161,6 +190,7 @@ export function useChat(modelSettings) {
           )
         );
       } finally {
+        isSendingRef.current = false;
         setIsLoading(false);
         setMessages((prev) =>
           prev.map((m) =>
@@ -183,7 +213,7 @@ export function useChat(modelSettings) {
     setError(null);
 
     try {
-      await fetch('/api/chat', {
+      await fetch(apiUrl('/api/chat'), {
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId: oldSessionId }),
