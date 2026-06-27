@@ -1,4 +1,29 @@
 /**
+ * Preserve exact streamed token text — do not trim (leading spaces are word boundaries).
+ * @param {unknown} content
+ * @returns {string}
+ */
+export function normalizeStreamDelta(content) {
+  if (typeof content === 'string') {
+    return content;
+  }
+
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        if (typeof part === 'string') return part;
+        if (typeof part?.text === 'string') return part.text;
+        if (part?.type === 'text' && typeof part?.text === 'string') return part.text;
+        return '';
+      })
+      .join('');
+  }
+
+  return '';
+}
+
+/**
+ * Normalize complete message content (safe to trim once the full reply is assembled).
  * @param {unknown} content
  * @returns {string}
  */

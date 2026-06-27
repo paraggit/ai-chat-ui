@@ -1,4 +1,4 @@
-import { normalizeContent } from './responseParser.js';
+import { normalizeStreamDelta } from './responseParser.js';
 import { fetchWithTimeout, readApiError } from './hfClient.js';
 
 /**
@@ -67,8 +67,11 @@ export async function consumeOpenAiStream(response, handlers, context = {}) {
       const delta = choice?.delta;
       if (!delta || typeof delta !== 'object') continue;
 
-      const contentDelta = normalizeContent(delta.content);
-      const reasoningDelta = [normalizeContent(delta.reasoning_content), normalizeContent(delta.reasoning)]
+      const contentDelta = normalizeStreamDelta(delta.content);
+      const reasoningDelta = [
+        normalizeStreamDelta(delta.reasoning_content),
+        normalizeStreamDelta(delta.reasoning),
+      ]
         .filter(Boolean)
         .join('');
 
