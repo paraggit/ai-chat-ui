@@ -2,6 +2,7 @@ import { buildChatMessages, buildPrompt } from './promptService.js';
 import { analyzeImages, generateImage } from './imageService.js';
 import { extractImageGenPrompt, wantsImageGeneration } from '../utils/images.js';
 import { parseModelResponse } from './responseParser.js';
+import { streamOpenAiChatCompletions } from './openaiStream.js';
 import {
   buildChatCompletionsUrl,
   fetchWithTimeout,
@@ -137,6 +138,97 @@ export function resolveHFConfig(overrides = {}) {
     timeoutMs,
     maxTokens,
   };
+}
+
+/**
+ * @typedef {Object} StreamHandlers
+ * @property {(token: string) => void} onToken
+ * @property {(metadata: Record<string, unknown>) => void} [onMetadata]
+ */
+
+/**
+ * @param {Array<{ role: string, content: string }>} history
+ * @param {string} newMessage
+ * @param {HFConfig} config
+ * @param {StreamHandlers} handlers
+ */
+async function streamGenerateResponse(history, newMessage, config, handlers) {
+  const messages = buildChatMessages(history, newMessage);
+  const body = {
+    model: config.model,
+    messages,
+    max_tokens: config.maxTokens,
+    temperature: 0.7,
+  };
+
+  if (isLocalProvider(config.provider)) {
+    /** @type {Record<string, string>} */
+    const headers = { 'Content-Type': 'application/json' };
+    applyAuthHeader(config.token, headers);
+    const url = buildChatCompletionsUrl(config.endpoint);
+    console.log(`[hfService] Local LLM stream → ${url} (model: ${config.model})`);
+    const result = await streamOpenAiChatCompletions(url, headers, body, handlers, {
+      strategy: 'local-openai-stream',
+      label: 'Local LLM',
+      timeoutMs: config.timeoutMs,
+    });
+    console.log(`[hfService] Local LLM stream success (${result.content.length} chars)`);
+    return result;
+  }
+
+  if (isCustomEndpoint(config.endpoint)) {
+    const base = config.endpoint.replace(/\/$/, '');
+    const headers = {
+      Authorization: `Bearer ${config.token}`,
+      'Content-Type': 'application/json',
+    };
+    const urls = [
+      { url: `${base}/v1/chat/completions`, strategy: 'openai-stream' },
+      { url: buildChatCompletionsUrl(base), strategy: 'openai-stream-alt' },
+    ];
+
+    /** @type {Error | null} */
+    let lastError = null;
+    for (const { url, strategy } of urls) {
+      try {
+        console.log(`[hfService] Streaming ${strategy} → ${url}`);
+        const result = await streamOpenAiChatCompletions(url, headers, body, handlers, {
+          strategy,
+          label: 'Inference endpoint',
+          timeoutMs: config.timeoutMs,
+        });
+        console.log(`[hfService] Stream success via ${strategy} (${result.content.length} chars)`);
+        return result;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+      }
+    }
+
+    console.warn('[hfService] Streaming failed, falling back to non-stream endpoint strategies');
+    const parsed = await generateViaCustomEndpoint(history, newMessage, config);
+    if (parsed.content) {
+      handlers.onToken(parsed.content);
+    }
+    if (parsed.metadata && handlers.onMetadata) {
+      handlers.onMetadata(parsed.metadata);
+    }
+    if (lastError && !parsed.content) {
+      throw lastError;
+    }
+    return parsed;
+  }
+
+  const headers = {
+    Authorization: `Bearer ${config.token}`,
+    'Content-Type': 'application/json',
+  };
+  const result = await streamOpenAiChatCompletions(HF_ROUTER_CHAT_URL, headers, body, handlers, {
+    strategy: 'hf-router-stream',
+    label: 'Chat API',
+    timeoutMs: config.timeoutMs,
+  });
+  console.log(`[hfService] Router stream success (${result.content.length} chars)`);
+  return result;
 }
 
 /**
@@ -366,9 +458,10 @@ async function generateViaCustomEndpoint(history, newMessage, config) {
  * @param {string} newMessage
  * @param {HFConfig} config
  * @param {string[]} [images]
+ * @param {StreamHandlers} [streamHandlers]
  * @returns {Promise<{ text: string, metadata: Record<string, unknown> | null, images: string[] }>}
  */
-export async function chat(history, newMessage, config, images = []) {
+export async function chat(history, newMessage, config, images = [], streamHandlers) {
   const textParts = [];
   const outputImages = [];
   /** @type {Record<string, unknown> | null} */
@@ -378,6 +471,9 @@ export async function chat(history, newMessage, config, images = []) {
 
   if (images.length > 0) {
     const visionText = await analyzeImages(images, visionQuestion, config);
+    if (streamHandlers) {
+      streamHandlers.onToken(visionText);
+    }
     textParts.push(visionText);
   }
 
@@ -385,13 +481,23 @@ export async function chat(history, newMessage, config, images = []) {
     const genPrompt = extractImageGenPrompt(trimmedMessage) || visionQuestion;
     const generated = await generateImage(genPrompt, config);
     outputImages.push(generated);
-    textParts.push(`Here is the generated image for: *${genPrompt}*`);
+    const imageMsg = `Here is the generated image for: *${genPrompt}*`;
+    if (streamHandlers) {
+      streamHandlers.onToken(imageMsg);
+    }
+    textParts.push(imageMsg);
   }
 
   if (images.length === 0 && !wantsImageGeneration(trimmedMessage)) {
-    const llmResult = await generateResponse(history, trimmedMessage, config);
-    textParts.push(llmResult.content);
-    responseMetadata = llmResult.metadata;
+    if (streamHandlers) {
+      const llmResult = await streamGenerateResponse(history, trimmedMessage, config, streamHandlers);
+      textParts.push(llmResult.content);
+      responseMetadata = llmResult.metadata;
+    } else {
+      const llmResult = await generateResponse(history, trimmedMessage, config);
+      textParts.push(llmResult.content);
+      responseMetadata = llmResult.metadata;
+    }
   }
 
   return {

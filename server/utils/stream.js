@@ -24,6 +24,7 @@ export function initSSE(res) {
  */
 export function sendToken(res, token) {
   res.write(`data: ${JSON.stringify({ token })}\n\n`);
+  res.flush?.();
 }
 
 /**
@@ -61,6 +62,17 @@ export function sendMessage(res, message, metadata) {
     payload.metadata = metadata;
   }
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
+  res.flush?.();
+}
+
+/**
+ * Send response metadata without replacing streamed message content.
+ * @param {import('express').Response} res
+ * @param {Record<string, unknown>} metadata
+ */
+export function sendMetadata(res, metadata) {
+  if (!metadata || Object.keys(metadata).length === 0) return;
+  res.write(`data: ${JSON.stringify({ metadata })}\n\n`);
   res.flush?.();
 }
 

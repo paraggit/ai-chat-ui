@@ -37,11 +37,11 @@ export default function MessageBubble({ message, isDark }) {
   const [copied, setCopied] = useState(false);
   const [showMetadata, setShowMetadata] = useState(false);
   const isUser = message.role === 'user';
-  const showTyping = message.streaming && !message.content && !reasoning && !(message.images?.length);
   const images = message.images ?? [];
   const statusText = message.status;
   const metadataAvailable = hasMetadata(message.metadata);
   const reasoning = getReasoning(message.metadata);
+  const showTyping = message.streaming && !message.content && !reasoning && !(images.length);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(message.content);

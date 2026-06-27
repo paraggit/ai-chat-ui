@@ -1,7 +1,7 @@
 import { sessionStore } from '../services/sessionStore.js';
 import { chat, getFallbackResponse, resolveHFConfig } from '../services/hfService.js';
 import { sanitizeImages } from '../utils/images.js';
-import { initSSE, sendError, sendDone, sendImage, sendMessage as sendFullMessage, sendStatus } from '../utils/stream.js';
+import { initSSE, sendError, sendDone, sendImage, sendMessage as sendFullMessage, sendMetadata, sendStatus, sendToken, simulateStream } from '../utils/stream.js';
 
 /**
  * Handle streaming chat via SSE.
@@ -73,12 +73,26 @@ export async function streamChat(req, res) {
   let fullResponse = '';
   let responseMetadata = null;
   let responseImages = [];
+  let streamedToClient = false;
 
   try {
-    const result = await chat(history, trimmedMessage, hfConfig, sanitizedImages);
+    const result = await chat(history, trimmedMessage, hfConfig, sanitizedImages, {
+      onToken: (token) => {
+        if (res.writableEnded) return;
+        streamedToClient = true;
+        fullResponse += token;
+        sendToken(res, token);
+      },
+      onMetadata: (metadata) => {
+        responseMetadata = metadata;
+        if (!res.writableEnded) {
+          sendMetadata(res, metadata);
+        }
+      },
+    });
 
-    fullResponse = result.text || 'Done.';
-    responseMetadata = result.metadata;
+    fullResponse = result.text || fullResponse || 'Done.';
+    responseMetadata = result.metadata ?? responseMetadata;
     responseImages = result.images;
 
     if (res.writableEnded) {
@@ -92,9 +106,11 @@ export async function streamChat(req, res) {
       return;
     }
 
-    console.log(`[chatController] Streaming ${fullResponse.length} chars to client`);
-    sendStatus(res, 'Streaming reply…');
-    sendFullMessage(res, fullResponse, responseMetadata);
+    if (!streamedToClient && fullResponse) {
+      console.log(`[chatController] Simulating stream for ${fullResponse.length} chars`);
+      sendStatus(res, 'Streaming reply…');
+      await simulateStream(res, fullResponse);
+    }
 
     for (const image of responseImages) {
       sendImage(res, image);

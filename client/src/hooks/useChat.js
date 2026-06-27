@@ -148,6 +148,18 @@ export function useChat(modelSettings) {
                   )
                 );
               }
+              if (parsed.metadata && !parsed.message) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantMsg.id
+                      ? {
+                          ...m,
+                          metadata: { ...(m.metadata ?? {}), ...parsed.metadata },
+                        }
+                      : m
+                  )
+                );
+              }
               if (parsed.token) {
                 setMessages((prev) =>
                   prev.map((m) =>
