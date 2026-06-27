@@ -2,7 +2,7 @@ const SETTINGS_KEY = 'hf-chat-pro-model-settings';
 
 const DEFAULTS = {
   apiKey: '',
-  model: 'mistralai/Mistral-7B-Instruct-v0.2',
+  model: 'Qwen/Qwen2.5-7B-Instruct',
   endpoint: '',
   visionModel: 'Salesforce/blip-vqa-base',
   imageGenModel: 'stabilityai/stable-diffusion-2-1',
@@ -22,9 +22,13 @@ export function loadModelSettings() {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (!raw) return { ...DEFAULTS };
     const parsed = JSON.parse(raw);
+    const model =
+      parsed.model === 'mistralai/Mistral-7B-Instruct-v0.2'
+        ? DEFAULTS.model
+        : (parsed.model ?? DEFAULTS.model);
     return {
       apiKey: parsed.apiKey ?? DEFAULTS.apiKey,
-      model: parsed.model ?? DEFAULTS.model,
+      model,
       endpoint: parsed.endpoint ?? DEFAULTS.endpoint,
       visionModel: parsed.visionModel ?? DEFAULTS.visionModel,
       imageGenModel: parsed.imageGenModel ?? DEFAULTS.imageGenModel,

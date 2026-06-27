@@ -1,8 +1,13 @@
-import { buildPrompt } from './promptService.js';
+import { buildChatMessages } from './promptService.js';
 import { analyzeImages, generateImage } from './imageService.js';
 import { extractImageGenPrompt, wantsImageGeneration } from '../utils/images.js';
+import {
+  buildChatCompletionsUrl,
+  fetchWithTimeout,
+  readApiError,
+  sleep,
+} from './hfClient.js';
 
-const DEFAULT_HF_API_BASE = 'https://api-inference.huggingface.co/models';
 const DEFAULT_TIMEOUT_MS = 15000;
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 1000;
@@ -33,7 +38,7 @@ const RETRY_DELAY_MS = 1000;
  */
 export function resolveHFConfig(overrides = {}) {
   const token = overrides.token || process.env.HF_TOKEN;
-  const model = overrides.model || process.env.HF_MODEL || 'mistralai/Mistral-7B-Instruct-v0.2';
+  const model = overrides.model || process.env.HF_MODEL || 'Qwen/Qwen2.5-7B-Instruct';
   const endpoint = overrides.endpoint || process.env.HF_API_BASE || '';
   const visionModel = overrides.visionModel || process.env.HF_VISION_MODEL || 'Salesforce/blip-vqa-base';
   const imageGenModel =
@@ -48,15 +53,15 @@ export function resolveHFConfig(overrides = {}) {
 }
 
 /**
- * Call Hugging Face Inference API with retry logic.
- * @param {string} prompt
- * @param {HFConfig} [config]
+ * Call Hugging Face Inference Providers chat completions API.
+ * @param {Array<{ role: string, content: string }>} history
+ * @param {string} newMessage
+ * @param {HFConfig} config
  * @returns {Promise<string>}
  */
-export async function generateResponse(prompt, config) {
-  const url = config.endpoint
-    ? config.endpoint.replace(/\/$/, '')
-    : `${DEFAULT_HF_API_BASE}/${config.model}`;
+export async function generateResponse(history, newMessage, config) {
+  const url = buildChatCompletionsUrl(config.endpoint || undefined);
+  const messages = buildChatMessages(history, newMessage);
   let lastError;
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -70,24 +75,22 @@ export async function generateResponse(prompt, config) {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            inputs: prompt,
-            parameters: {
-              max_new_tokens: 512,
-              return_full_text: false,
-              temperature: 0.7,
-            },
+            model: config.model,
+            messages,
+            max_tokens: 512,
+            temperature: 0.7,
+            stream: false,
           }),
         },
         config.timeoutMs
       );
 
       if (!response.ok) {
-        const errorBody = await response.text();
-        throw new Error(`HF API error (${response.status}): ${errorBody}`);
+        await readApiError(response, 'Chat API');
       }
 
       const data = await response.json();
-      return extractGeneratedText(data);
+      return extractChatCompletionText(data);
     } catch (error) {
       lastError = error;
       if (attempt < MAX_RETRIES) {
@@ -125,8 +128,7 @@ export async function chat(history, newMessage, config, images = []) {
   }
 
   if (images.length === 0 && !wantsImageGeneration(trimmedMessage)) {
-    const prompt = buildPrompt(history, trimmedMessage);
-    textParts.push(await generateResponse(prompt, config));
+    textParts.push(await generateResponse(history, trimmedMessage, config));
   }
 
   return {
@@ -136,63 +138,25 @@ export async function chat(history, newMessage, config, images = []) {
 }
 
 /**
- * Extract generated text from various HF response formats.
  * @param {unknown} data
  * @returns {string}
  */
-function extractGeneratedText(data) {
-  if (Array.isArray(data)) {
-    const first = data[0];
-    if (typeof first?.generated_text === 'string') {
-      return first.generated_text.trim();
-    }
-    if (typeof first?.summary_text === 'string') {
-      return first.summary_text.trim();
-    }
-  }
-
+function extractChatCompletionText(data) {
   if (typeof data === 'object' && data !== null) {
-    if ('generated_text' in data && typeof data.generated_text === 'string') {
-      return data.generated_text.trim();
+    const choice = data.choices?.[0];
+    const content = choice?.message?.content;
+    if (typeof content === 'string') {
+      return content.trim();
     }
-    if ('error' in data && typeof data.error === 'string') {
-      throw new Error(data.error);
+    if (typeof choice?.text === 'string') {
+      return choice.text.trim();
+    }
+    if ('error' in data && typeof data.error === 'object' && data.error?.message) {
+      throw new Error(data.error.message);
     }
   }
 
-  if (typeof data === 'string') {
-    return data.trim();
-  }
-
-  throw new Error('Unexpected HF API response format');
-}
-
-/**
- * @param {string} url
- * @param {RequestInit} options
- * @param {number} timeoutMs
- */
-async function fetchWithTimeout(url, options, timeoutMs) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-  try {
-    return await fetch(url, { ...options, signal: controller.signal });
-  } catch (error) {
-    if (error.name === 'AbortError') {
-      throw new Error(`HF API request timed out after ${timeoutMs}ms`);
-    }
-    throw error;
-  } finally {
-    clearTimeout(timeoutId);
-  }
-}
-
-/**
- * @param {number} ms
- */
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+  throw new Error('Unexpected chat completion response format');
 }
 
 /**
@@ -202,5 +166,11 @@ function sleep(ms) {
  */
 export function getFallbackResponse(error) {
   const message = error?.message ?? 'Unknown error';
-  return `I'm sorry, I'm having trouble connecting to the AI model right now. Please try again in a moment.\n\n_(Error: ${message})_`;
+  return (
+    `I'm sorry, I'm having trouble connecting to the AI model right now. Please try again in a moment.\n\n` +
+    `**Tips:**\n` +
+    `- Use a Hugging Face token with **Inference Providers** permission\n` +
+    `- Pick a model available on Inference Providers (e.g. \`Qwen/Qwen2.5-7B-Instruct\`)\n\n` +
+    `_(Error: ${message})_`
+  );
 }

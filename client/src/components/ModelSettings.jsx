@@ -91,7 +91,7 @@ export default function ModelSettings({ settings, configured, onSave }) {
               type="text"
               value={draft.model}
               onChange={(e) => setDraft((prev) => ({ ...prev, model: e.target.value }))}
-              placeholder="mistralai/Mistral-7B-Instruct-v0.2"
+              placeholder="Qwen/Qwen2.5-7B-Instruct"
               className="w-full rounded-md border border-gray-200 bg-surface-secondary px-2.5 py-2 font-mono text-xs outline-none focus:border-accent dark:border-gray-600 dark:bg-surface-dark-secondary"
             />
             <p className="mt-1 text-[10px] leading-snug text-gray-400">

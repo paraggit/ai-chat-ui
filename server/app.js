@@ -47,12 +47,12 @@ if (sslOptions) {
   https.createServer(sslOptions, app).listen(PORT, () => {
     console.log(`HF Chat Pro server running on ${protocol}://localhost:${PORT}`);
     console.log(`SSL: enabled (self-signed)`);
-    console.log(`Model: ${process.env.HF_MODEL || 'mistralai/Mistral-7B-Instruct-v0.2'}`);
+    console.log(`Model: ${process.env.HF_MODEL || 'Qwen/Qwen2.5-7B-Instruct'}`);
   });
 } else {
   http.createServer(app).listen(PORT, () => {
     console.log(`HF Chat Pro server running on ${protocol}://localhost:${PORT}`);
-    console.log(`Model: ${process.env.HF_MODEL || 'mistralai/Mistral-7B-Instruct-v0.2'}`);
+    console.log(`Model: ${process.env.HF_MODEL || 'Qwen/Qwen2.5-7B-Instruct'}`);
   });
 }
 

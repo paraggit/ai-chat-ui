@@ -109,7 +109,7 @@ You can configure the Hugging Face connection in two ways:
 
 1. **In the UI (recommended)** — Open **Model settings** in the left sidebar and enter:
    - **API key** — your Hugging Face token (`hf_...`)
-   - **Model ID** — e.g. `mistralai/Mistral-7B-Instruct-v0.2`
+   - **Model ID** — e.g. `Qwen/Qwen2.5-7B-Instruct`
    - **Custom endpoint** — optional deployed Inference Endpoint URL
    - **Vision model** — e.g. `Salesforce/blip-vqa-base` (for uploaded images)
    - **Image generation model** — e.g. `stabilityai/stable-diffusion-2-1`
@@ -117,6 +117,16 @@ You can configure the Hugging Face connection in two ways:
    Settings are saved in `localStorage` and sent with each chat request.
 
 2. **Server environment** — Set `HF_TOKEN`, `HF_MODEL`, and optionally `HF_API_BASE` in `.env` as fallbacks when the UI does not provide values.
+
+### Hugging Face token requirements
+
+Hugging Face retired the legacy `api-inference.huggingface.co` endpoint. This app uses **Inference Providers** via `router.huggingface.co`.
+
+Your token must be a **fine-grained token** with **"Make calls to Inference Providers"** enabled:
+
+https://huggingface.co/settings/tokens
+
+If chat fails with `404 File Not Found`, update your **Model ID** in sidebar settings to a supported model (default: `Qwen/Qwen2.5-7B-Instruct`).
 
 ## Image Chat
 
@@ -141,7 +151,7 @@ Uses the **Image generation model** from settings (default: `stabilityai/stable-
 | Variable        | Required | Default                              | Description                    |
 |-----------------|----------|--------------------------------------|--------------------------------|
 | `HF_TOKEN`      | No*     | —                                    | Server fallback API token      |
-| `HF_MODEL`      | No       | `mistralai/Mistral-7B-Instruct-v0.2` | Text chat model ID             |
+| `HF_MODEL`      | No       | `Qwen/Qwen2.5-7B-Instruct` | Text chat model ID             |
 | `HF_VISION_MODEL` | No     | `Salesforce/blip-vqa-base`           | Vision / image Q&A model       |
 | `HF_IMAGE_GEN_MODEL` | No  | `stabilityai/stable-diffusion-2-1` | Text-to-image model            |
 | `HF_TIMEOUT_MS` | No       | `15000`                              | API request timeout (ms)       |
@@ -169,7 +179,7 @@ To use a deployed HF Inference Endpoint instead of the public API, set `HF_MODEL
   "sessionId": "abc123",
   "images": ["data:image/png;base64,..."],
   "hfToken": "hf_...",
-  "model": "mistralai/Mistral-7B-Instruct-v0.2",
+  "model": "Qwen/Qwen2.5-7B-Instruct",
   "visionModel": "Salesforce/blip-vqa-base",
   "imageGenModel": "stabilityai/stable-diffusion-2-1"
 }

@@ -131,7 +131,7 @@ export function healthCheck(_req, res) {
   res.json({
     status: 'ok',
     service: 'HF Chat Pro',
-    model: process.env.HF_MODEL || 'mistralai/Mistral-7B-Instruct-v0.2',
+    model: process.env.HF_MODEL || 'Qwen/Qwen2.5-7B-Instruct',
     visionModel: process.env.HF_VISION_MODEL || 'Salesforce/blip-vqa-base',
     imageGenModel: process.env.HF_IMAGE_GEN_MODEL || 'stabilityai/stable-diffusion-2-1',
     timestamp: new Date().toISOString(),
