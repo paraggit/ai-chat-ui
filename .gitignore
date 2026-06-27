@@ -5,6 +5,11 @@ node_modules/
 .env
 .env.local
 
+# SSL certificates (generated locally)
+certs/*.pem
+certs/*.key
+certs/*.crt
+
 # Build
 client/dist/
 dist/

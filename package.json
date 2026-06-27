@@ -5,10 +5,13 @@
   "description": "Production-grade AI chat app powered by Hugging Face",
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
+    "dev:ssl": "npm run certs:generate && SSL_ENABLED=true CLIENT_ORIGIN=https://localhost:5173 concurrently \"npm run dev:server\" \"npm run dev:client\"",
     "dev:server": "npm run dev --workspace=server",
     "dev:client": "npm run dev --workspace=client",
+    "certs:generate": "bash scripts/generate-certs.sh",
     "build": "npm run build --workspace=client",
     "start": "npm run start --workspace=server",
+    "start:ssl": "npm run certs:generate && SSL_ENABLED=true CLIENT_ORIGIN=https://localhost:3001 NODE_ENV=production npm run start --workspace=server",
     "install:all": "npm install && npm install --workspace=server && npm install --workspace=client"
   },
   "workspaces": [

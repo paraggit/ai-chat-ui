@@ -2,9 +2,12 @@ import 'dotenv/config';
 import express from 'express';
 import cors from 'cors';
 import path from 'path';
+import http from 'http';
+import https from 'https';
 import { fileURLToPath } from 'url';
 import chatRoutes from './routes/chat.js';
 import { rateLimit } from './middleware/rateLimit.js';
+import { getServerProtocol, loadSSLOptions } from './utils/ssl.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -37,9 +40,20 @@ app.use((err, _req, res, _next) => {
   res.status(500).json({ error: 'Internal server error' });
 });
 
-app.listen(PORT, () => {
-  console.log(`HF Chat Pro server running on http://localhost:${PORT}`);
-  console.log(`Model: ${process.env.HF_MODEL || 'mistralai/Mistral-7B-Instruct-v0.2'}`);
-});
+const sslOptions = loadSSLOptions();
+const protocol = getServerProtocol();
+
+if (sslOptions) {
+  https.createServer(sslOptions, app).listen(PORT, () => {
+    console.log(`HF Chat Pro server running on ${protocol}://localhost:${PORT}`);
+    console.log(`SSL: enabled (self-signed)`);
+    console.log(`Model: ${process.env.HF_MODEL || 'mistralai/Mistral-7B-Instruct-v0.2'}`);
+  });
+} else {
+  http.createServer(app).listen(PORT, () => {
+    console.log(`HF Chat Pro server running on ${protocol}://localhost:${PORT}`);
+    console.log(`Model: ${process.env.HF_MODEL || 'mistralai/Mistral-7B-Instruct-v0.2'}`);
+  });
+}
 
 export default app;

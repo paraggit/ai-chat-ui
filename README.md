@@ -61,6 +61,36 @@ npm run dev
 - Frontend: http://localhost:5173
 - Backend API: http://localhost:3001
 
+### HTTPS (self-signed SSL)
+
+Generate a local certificate and run both frontend and backend over HTTPS:
+
+```bash
+npm run certs:generate   # one-time (or re-run to recreate)
+npm run dev:ssl
+```
+
+- Frontend: https://localhost:5173
+- Backend API: https://localhost:3001
+
+Your browser will warn that the certificate is self-signed — that is expected for local dev. Proceed to accept it (Advanced → Continue).
+
+For production with SSL, set in `.env`:
+
+```env
+SSL_ENABLED=true
+SSL_KEY_PATH=./certs/key.pem
+SSL_CERT_PATH=./certs/cert.pem
+CLIENT_ORIGIN=https://your-domain.com
+```
+
+Then:
+
+```bash
+npm run build
+npm run start:ssl
+```
+
 ## Production
 
 ```bash
@@ -95,6 +125,9 @@ You can configure the Hugging Face connection in two ways:
 | `HF_TIMEOUT_MS` | No       | `15000`                              | API request timeout (ms)       |
 | `PORT`          | No       | `3001`                               | Server port                    |
 | `CLIENT_ORIGIN` | No       | `http://localhost:5173`              | CORS allowed origin            |
+| `SSL_ENABLED`   | No       | `false`                              | Enable HTTPS with local certs  |
+| `SSL_KEY_PATH`  | No       | `./certs/key.pem`                    | TLS private key path           |
+| `SSL_CERT_PATH` | No       | `./certs/cert.pem`                   | TLS certificate path           |
 
 \*Required either in the UI settings or as `HF_TOKEN` in `.env`.
 
