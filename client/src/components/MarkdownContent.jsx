@@ -7,8 +7,17 @@ import { isBlockCode, resolveLanguage } from '../utils/codeLanguage.js';
  * @param {{ content: string, isDark: boolean, streaming?: boolean }} props
  */
 export default function MarkdownContent({ content, isDark, streaming }) {
+  if (streaming) {
+    return (
+      <div className="markdown-content min-w-0 text-sm leading-relaxed break-words [overflow-wrap:anywhere]">
+        <p className="whitespace-pre-wrap m-0">{content}</p>
+        <span className="inline-block h-4 w-1 animate-pulse bg-accent ml-0.5 align-middle" />
+      </div>
+    );
+  }
+
   return (
-    <div className="markdown-content prose prose-sm dark:prose-invert max-w-none">
+    <div className="markdown-content prose prose-sm dark:prose-invert max-w-none min-w-0 break-words [overflow-wrap:anywhere]">
       <ReactMarkdown
         remarkPlugins={[remarkGfm]}
         components={{
@@ -43,9 +52,6 @@ export default function MarkdownContent({ content, isDark, streaming }) {
       >
         {content}
       </ReactMarkdown>
-      {streaming && (
-        <span className="inline-block h-4 w-1 animate-pulse bg-accent ml-0.5 align-middle" />
-      )}
     </div>
   );
 }

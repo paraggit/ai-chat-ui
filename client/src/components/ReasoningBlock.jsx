@@ -42,7 +42,7 @@ export default function ReasoningBlock({ reasoning, streaming }) {
 
       {expanded && (
         <div className="border-t border-amber-200/80 px-3 py-2 dark:border-amber-900/50">
-          <p className="whitespace-pre-wrap text-xs leading-relaxed text-amber-950/90 dark:text-amber-100/90">
+          <p className="whitespace-pre-wrap break-words text-xs leading-relaxed text-amber-950/90 [overflow-wrap:anywhere] dark:text-amber-100/90">
             {reasoning}
           </p>
         </div>

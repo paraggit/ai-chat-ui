@@ -45,7 +45,7 @@ export default function CodeBlock({ code, language, isDark }) {
             className: 'font-mono',
           }}
           showLineNumbers={code.split('\n').length > 2}
-          wrapLongLines={false}
+          wrapLongLines
         >
           {code}
         </SyntaxHighlighter>

@@ -30,7 +30,7 @@ export default function App() {
         onSaveSettings={updateSettings}
       />
 
-      <main className="flex flex-1 flex-col bg-surface-secondary dark:bg-surface-dark-secondary">
+      <main className="flex min-w-0 flex-1 flex-col bg-surface-secondary dark:bg-surface-dark-secondary">
         {error && (
           <div className="border-b border-red-200 bg-red-50 px-4 py-2 text-center text-sm text-red-600 dark:border-red-800 dark:bg-red-950 dark:text-red-400">
             {error}

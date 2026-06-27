@@ -39,7 +39,7 @@ export default function MessageList({ messages, isDark }) {
           </p>
         </div>
       ) : (
-        <div className="mx-auto flex max-w-3xl flex-col gap-4">
+        <div className="mx-auto flex w-full min-w-0 max-w-3xl flex-col gap-4">
           {messages.map((message) => (
             <MessageBubble key={message.id} message={message} isDark={isDark} />
           ))}

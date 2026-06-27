@@ -53,7 +53,7 @@ export default function MessageBubble({ message, isDark }) {
     <>
       <div className={`group flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}>
         <div
-          className={`relative max-w-[85%] rounded-2xl px-4 py-3 ${
+          className={`relative min-w-0 max-w-[85%] overflow-hidden rounded-2xl px-4 py-3 ${
             isUser
               ? 'bg-accent text-white'
               : 'bg-white dark:bg-surface-dark border border-gray-200 dark:border-gray-700'
@@ -104,7 +104,9 @@ export default function MessageBubble({ message, isDark }) {
 
               {isUser ? (
                 message.content ? (
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed">{message.content}</p>
+                  <p className="m-0 whitespace-pre-wrap break-words text-sm leading-relaxed [overflow-wrap:anywhere]">
+                    {message.content}
+                  </p>
                 ) : null
               ) : message.content || reasoning ? (
                 <>

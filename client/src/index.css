@@ -15,11 +15,29 @@
 }
 
 @layer components {
+  .markdown-content {
+    @apply min-w-0 break-words;
+    overflow-wrap: anywhere;
+  }
+
   .markdown-content pre {
-    @apply m-0 bg-transparent p-0;
+    @apply m-0 max-w-full overflow-x-auto bg-transparent p-0;
   }
 
   .markdown-content :not(pre) > code {
+    @apply break-words;
+  }
+
+  .markdown-content table {
+    @apply block max-w-full overflow-x-auto;
+  }
+
+  .markdown-content img {
+    @apply max-w-full h-auto;
+  }
+
+  .markdown-content p,
+  .markdown-content li {
     @apply break-words;
   }
 
