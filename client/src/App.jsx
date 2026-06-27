@@ -4,6 +4,7 @@ import MessageList from './components/MessageList.jsx';
 import ChatInput from './components/ChatInput.jsx';
 import { useChat } from './hooks/useChat.js';
 import { useModelSettings } from './hooks/useModelSettings.js';
+import { isLocalProvider } from './utils/modelSettings.js';
 import { getInitialDarkMode, setDarkMode } from './utils/theme.js';
 
 export default function App() {
@@ -37,7 +38,12 @@ export default function App() {
         )}
 
         <MessageList messages={messages} isDark={isDark} />
-        <ChatInput onSend={sendMessage} disabled={isLoading} configured={configured} />
+        <ChatInput
+          onSend={sendMessage}
+          disabled={isLoading}
+          configured={configured}
+          localMode={isLocalProvider(settings)}
+        />
       </main>
     </div>
   );

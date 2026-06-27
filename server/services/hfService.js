@@ -12,7 +12,12 @@ import {
 
 const DEFAULT_TIMEOUT_MS = 15000;
 const CUSTOM_ENDPOINT_TIMEOUT_MS = 180000;
+const LOCAL_LLM_TIMEOUT_MS = 120000;
 const DEFAULT_MAX_TOKENS = 4096;
+const LOCAL_LLM_DEFAULT_URL = 'http://localhost:11434';
+const LOCAL_LLM_DEFAULT_MODEL = 'llama3.2';
+const PROVIDER_LOCAL = 'local';
+const PROVIDER_HF = 'huggingface';
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 1000;
 
@@ -23,6 +28,7 @@ const RETRY_DELAY_MS = 1000;
  * @property {string} [endpoint]
  * @property {string} visionModel
  * @property {string} imageGenModel
+ * @property {string} provider
  * @property {number} timeoutMs
  * @property {number} maxTokens
  */
@@ -34,6 +40,7 @@ const RETRY_DELAY_MS = 1000;
  * @property {string} [endpoint]
  * @property {string} [visionModel]
  * @property {string} [imageGenModel]
+ * @property {string} [provider]
  * @property {number} [maxTokens]
  */
 
@@ -42,6 +49,23 @@ const RETRY_DELAY_MS = 1000;
  */
 export function isCustomEndpoint(endpoint) {
   return Boolean(endpoint?.trim());
+}
+
+/**
+ * @param {string} [provider]
+ */
+export function isLocalProvider(provider) {
+  return provider === PROVIDER_LOCAL;
+}
+
+/**
+ * @param {string} token
+ * @param {Record<string, string>} headers
+ */
+function applyAuthHeader(token, headers) {
+  if (token?.trim()) {
+    headers.Authorization = `Bearer ${token.trim()}`;
+  }
 }
 
 /**
@@ -64,23 +88,55 @@ function resolveMaxTokens(override) {
  * @returns {HFConfig}
  */
 export function resolveHFConfig(overrides = {}) {
-  const token = overrides.token || process.env.HF_TOKEN;
-  const model = overrides.model || process.env.HF_MODEL || 'Qwen/Qwen2.5-7B-Instruct';
-  const endpoint = overrides.endpoint || process.env.HF_API_BASE || '';
+  const provider =
+    overrides.provider === PROVIDER_LOCAL
+      ? PROVIDER_LOCAL
+      : overrides.provider === PROVIDER_HF
+        ? PROVIDER_HF
+        : process.env.LLM_PROVIDER === PROVIDER_LOCAL
+          ? PROVIDER_LOCAL
+          : PROVIDER_HF;
+  const token = overrides.token || process.env.HF_TOKEN || '';
+  let model =
+    overrides.model ||
+    (provider === PROVIDER_LOCAL ? process.env.LOCAL_LLM_MODEL : process.env.HF_MODEL) ||
+    (provider === PROVIDER_LOCAL ? LOCAL_LLM_DEFAULT_MODEL : 'Qwen/Qwen2.5-7B-Instruct');
+  let endpoint =
+    overrides.endpoint ||
+    (provider === PROVIDER_LOCAL ? process.env.LOCAL_LLM_URL : process.env.HF_API_BASE) ||
+    (provider === PROVIDER_LOCAL ? LOCAL_LLM_DEFAULT_URL : '');
   const visionModel = overrides.visionModel || process.env.HF_VISION_MODEL || 'Salesforce/blip-vqa-base';
   const imageGenModel =
     overrides.imageGenModel || process.env.HF_IMAGE_GEN_MODEL || 'stabilityai/stable-diffusion-2-1';
   const baseTimeout = Number(process.env.HF_TIMEOUT_MS) || DEFAULT_TIMEOUT_MS;
-  const timeoutMs = isCustomEndpoint(endpoint)
-    ? Number(process.env.HF_ENDPOINT_TIMEOUT_MS) || Math.max(baseTimeout, CUSTOM_ENDPOINT_TIMEOUT_MS)
-    : baseTimeout;
+  const localTimeout = Number(process.env.LOCAL_LLM_TIMEOUT_MS) || LOCAL_LLM_TIMEOUT_MS;
+  const timeoutMs =
+    provider === PROVIDER_LOCAL
+      ? localTimeout
+      : isCustomEndpoint(endpoint)
+        ? Number(process.env.HF_ENDPOINT_TIMEOUT_MS) ||
+          Math.max(baseTimeout, CUSTOM_ENDPOINT_TIMEOUT_MS)
+        : baseTimeout;
   const maxTokens = resolveMaxTokens(overrides.maxTokens);
 
-  if (!token) {
+  if (provider !== PROVIDER_LOCAL && !token) {
     throw new Error('API key is required. Set it in the UI settings or HF_TOKEN env variable.');
   }
 
-  return { token, model, endpoint, visionModel, imageGenModel, timeoutMs, maxTokens };
+  if (provider === PROVIDER_LOCAL && !model.trim()) {
+    throw new Error('Local model name is required (e.g. llama3.2).');
+  }
+
+  return {
+    token: token.trim(),
+    model: model.trim(),
+    endpoint: endpoint.trim(),
+    visionModel,
+    imageGenModel,
+    provider,
+    timeoutMs,
+    maxTokens,
+  };
 }
 
 /**
@@ -90,11 +146,69 @@ export function resolveHFConfig(overrides = {}) {
  * @returns {Promise<ParsedModelResponse>}
  */
 export async function generateResponse(history, newMessage, config) {
+  if (isLocalProvider(config.provider)) {
+    return generateViaLocalLlm(history, newMessage, config);
+  }
+
   if (isCustomEndpoint(config.endpoint)) {
     return generateViaCustomEndpoint(history, newMessage, config);
   }
 
   return generateViaRouter(history, newMessage, config);
+}
+
+/**
+ * OpenAI-compatible local server (Ollama, llama.cpp, LM Studio, etc.).
+ * @param {Array<{ role: string, content: string }>} history
+ * @param {string} newMessage
+ * @param {HFConfig} config
+ */
+async function generateViaLocalLlm(history, newMessage, config) {
+  const url = buildChatCompletionsUrl(config.endpoint);
+  const messages = buildChatMessages(history, newMessage);
+  let lastError;
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      /** @type {Record<string, string>} */
+      const headers = { 'Content-Type': 'application/json' };
+      applyAuthHeader(config.token, headers);
+
+      console.log(`[hfService] Local LLM → ${url} (model: ${config.model})`);
+
+      const response = await fetchWithTimeout(
+        url,
+        {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            model: config.model,
+            messages,
+            max_tokens: config.maxTokens,
+            temperature: 0.7,
+            stream: false,
+          }),
+        },
+        config.timeoutMs
+      );
+
+      if (!response.ok) {
+        await readApiError(response, 'Local LLM');
+      }
+
+      const data = await response.json();
+      const parsed = parseModelResponse(data, { strategy: 'local-openai' });
+      console.log(`[hfService] Local LLM success (${parsed.content.length} chars)`);
+      return parsed;
+    } catch (error) {
+      lastError = error;
+      if (attempt < MAX_RETRIES) {
+        await sleep(RETRY_DELAY_MS * (attempt + 1));
+      }
+    }
+  }
+
+  throw lastError ?? new Error('Local LLM request failed');
 }
 
 /**
@@ -297,6 +411,7 @@ export function getFallbackResponse(error) {
   return (
     `I'm sorry, I'm having trouble connecting to the AI model right now. Please try again in a moment.\n\n` +
     `**Tips:**\n` +
+    `- For **Local Llama**, ensure Ollama is running (\`ollama serve\`) and the model is pulled (\`ollama pull llama3.2\`)\n` +
     `- For **Inference Endpoints**, use your endpoint URL in settings (e.g. \`https://xxx.aws.endpoints.huggingface.cloud\`)\n` +
     `- Large models may take 1–3 minutes on cold start\n` +
     `- Ensure your HF token has access to the endpoint\n` +

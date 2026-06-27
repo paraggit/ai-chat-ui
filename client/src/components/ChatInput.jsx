@@ -7,9 +7,10 @@ import { MAX_ATTACHMENTS, processImageFiles } from '../utils/images.js';
  *   onSend: (text: string, images?: string[]) => void,
  *   disabled: boolean,
  *   configured: boolean,
+ *   localMode?: boolean,
  * }} props
  */
-export default function ChatInput({ onSend, disabled, configured }) {
+export default function ChatInput({ onSend, disabled, configured, localMode = false }) {
   const inputRef = useRef(null);
   const fileRef = useRef(null);
   const [attachments, setAttachments] = useState(/** @type {string[]} */ ([]));
@@ -56,7 +57,9 @@ export default function ChatInput({ onSend, disabled, configured }) {
     <div className="border-t border-gray-200 bg-white px-4 py-4 dark:border-gray-700 dark:bg-surface-dark">
       {!configured && (
         <div className="mx-auto mb-3 max-w-3xl rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
-          Configure your Hugging Face API key and model in the sidebar settings before chatting.
+          {localMode
+            ? 'Configure your local server URL and model name in sidebar settings (Ollama: ollama pull llama3.2).'
+            : 'Configure your Hugging Face API key and model in the sidebar settings before chatting.'}
         </div>
       )}
 

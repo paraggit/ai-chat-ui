@@ -13,6 +13,7 @@ export async function streamChat(req, res) {
     message,
     sessionId,
     images,
+    provider,
     hfToken,
     model,
     endpoint,
@@ -35,6 +36,7 @@ export async function streamChat(req, res) {
   let hfConfig;
   try {
     hfConfig = resolveHFConfig({
+      provider: typeof provider === 'string' ? provider.trim() : undefined,
       token: typeof hfToken === 'string' ? hfToken.trim() : undefined,
       model: typeof model === 'string' ? model.trim() : undefined,
       endpoint: typeof endpoint === 'string' ? endpoint.trim() : undefined,
@@ -55,7 +57,14 @@ export async function streamChat(req, res) {
   });
 
   initSSE(res);
-  sendStatus(res, hfConfig.endpoint ? 'Connecting to your inference endpoint…' : 'Generating response…');
+  sendStatus(
+    res,
+    hfConfig.provider === 'local'
+      ? 'Connecting to local Llama…'
+      : hfConfig.endpoint
+        ? 'Connecting to your inference endpoint…'
+        : 'Generating response…'
+  );
 
   req.on('aborted', () => {
     console.warn('[chatController] Client disconnected during request');

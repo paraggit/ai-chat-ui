@@ -74,11 +74,11 @@ export async function readApiError(response, label = 'HF API') {
     // keep raw body
   }
 
-  if (response.status === 404) {
+  if (response.status === 404 && label !== 'Local LLM') {
     message += '. The legacy api-inference.huggingface.co endpoint is retired — use Inference Providers (router.huggingface.co) and a supported model.';
   }
 
-  if (response.status === 401 || response.status === 403) {
+  if ((response.status === 401 || response.status === 403) && label !== 'Local LLM') {
     message +=
       '. Ensure your HF token has "Make calls to Inference Providers" permission at https://huggingface.co/settings/tokens';
   }
