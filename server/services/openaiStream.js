@@ -1,4 +1,4 @@
-import { normalizeStreamDelta } from './responseParser.js';
+import { normalizeStreamDelta, StreamContentFilter } from './responseParser.js';
 import { fetchWithTimeout, readApiError } from './hfClient.js';
 
 /**
@@ -24,6 +24,7 @@ export async function consumeOpenAiStream(response, handlers, context = {}) {
   let buffer = '';
   let content = '';
   let reasoning = '';
+  const contentFilter = new StreamContentFilter();
   /** @type {Record<string, unknown>} */
   const metadata = {};
 
@@ -65,23 +66,37 @@ export async function consumeOpenAiStream(response, handlers, context = {}) {
       if (choice?.finish_reason) metadata.finishReason = choice.finish_reason;
 
       const delta = choice?.delta;
-      if (!delta || typeof delta !== 'object') continue;
+      const message = choice?.message;
 
-      const contentDelta = normalizeStreamDelta(delta.content);
-      const reasoningDelta = [
-        normalizeStreamDelta(delta.reasoning_content),
-        normalizeStreamDelta(delta.reasoning),
-      ]
-        .filter(Boolean)
-        .join('');
+      const reasoningDelta = delta
+        ? [
+            normalizeStreamDelta(delta.reasoning_content),
+            normalizeStreamDelta(delta.reasoning),
+            normalizeStreamDelta(delta.thinking),
+          ]
+            .filter(Boolean)
+            .join('')
+        : '';
 
       if (reasoningDelta) {
         reasoning += reasoningDelta;
       }
 
-      if (contentDelta) {
-        content += contentDelta;
-        handlers.onToken(contentDelta);
+      const rawContentDelta = delta
+        ? normalizeStreamDelta(delta.content)
+        : message
+          ? normalizeStreamDelta(message.content)
+          : '';
+
+      if (rawContentDelta) {
+        const { visible, thinking } = contentFilter.feed(rawContentDelta);
+        if (thinking) {
+          reasoning += thinking;
+        }
+        if (visible) {
+          content += visible;
+          handlers.onToken(visible);
+        }
       }
     }
   }

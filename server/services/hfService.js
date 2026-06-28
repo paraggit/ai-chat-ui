@@ -151,11 +151,17 @@ function buildChatRequestBody(config, messages, overrides = {}) {
     model: config.model,
     messages,
     max_tokens: config.maxTokens,
-    temperature: overrides.temperature ?? 0.7,
+    temperature: overrides.temperature ?? 0.5,
     stream: overrides.stream ?? false,
   };
   if (isLocalProvider(config.provider)) {
     body.options = { num_predict: config.maxTokens };
+    if (process.env.OLLAMA_THINK !== 'true') {
+      body.think = false;
+    }
+  }
+  if (isCustomEndpoint(config.endpoint) && process.env.HF_ENABLE_THINKING !== 'true') {
+    body.chat_template_kwargs = { enable_thinking: false };
   }
   return body;
 }

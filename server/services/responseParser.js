@@ -49,6 +49,55 @@ export function normalizeContent(content) {
 }
 
 /**
+ * Strip  blocks from streamed content (handles tags split across chunks).
+ */
+export class StreamContentFilter {
+  /** @type {string} */
+  #pending = '';
+  /** @type {boolean} */
+  #inThinkBlock = false;
+
+  /**
+   * @param {string} chunk
+   * @returns {{ visible: string, thinking: string }}
+   */
+  feed(chunk) {
+    let visible = '';
+    let thinking = '';
+    this.#pending += chunk;
+
+    while (this.#pending.length > 0) {
+      if (this.#inThinkBlock) {
+        const endMatch = this.#pending.match(/<\s*\/\s*think\s*>/i);
+        if (!endMatch || endMatch.index === undefined) {
+          thinking += this.#pending;
+          this.#pending = '';
+          break;
+        }
+
+        thinking += this.#pending.slice(0, endMatch.index);
+        this.#pending = this.#pending.slice(endMatch.index + endMatch[0].length);
+        this.#inThinkBlock = false;
+        continue;
+      }
+
+      const startMatch = this.#pending.match(/<\s*think\s*>/i);
+      if (!startMatch || startMatch.index === undefined) {
+        visible += this.#pending;
+        this.#pending = '';
+        break;
+      }
+
+      visible += this.#pending.slice(0, startMatch.index);
+      this.#pending = this.#pending.slice(startMatch.index + startMatch[0].length);
+      this.#inThinkBlock = true;
+    }
+
+    return { visible, thinking };
+  }
+}
+
+/**
  * @param {string} text
  */
 function stripThinkingTags(text) {

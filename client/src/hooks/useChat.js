@@ -239,6 +239,8 @@ export function useChat(modelSettings) {
         }
 
         await loadSessionList();
+        isSendingRef.current = false;
+        await loadHistory(sessionId);
       } catch (err) {
         if (err.name === 'AbortError') {
           if (stoppedByUserRef.current) {
@@ -278,7 +280,7 @@ export function useChat(modelSettings) {
         setMessages((prev) =>
           prev.map((m) =>
             m.id === assistantMsg.id && m.streaming
-              ? { ...m, streaming: false }
+              ? { ...m, streaming: false, status: undefined }
               : m
           )
         );

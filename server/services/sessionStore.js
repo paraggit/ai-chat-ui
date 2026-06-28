@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { sanitizeMemoryFacts, sanitizeMemoryText } from '../utils/textQuality.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -85,8 +86,8 @@ class PersistentSessionStore {
       createdAt: data.createdAt || now,
       updatedAt: data.updatedAt || now,
       messages: Array.isArray(data.messages) ? data.messages : [],
-      conversationSummary: data.conversationSummary || '',
-      longTermMemory: Array.isArray(data.longTermMemory) ? data.longTermMemory : [],
+      conversationSummary: sanitizeMemoryText(data.conversationSummary || ''),
+      longTermMemory: sanitizeMemoryFacts(data.longTermMemory || []),
       lastSummarizedIndex: Number.isFinite(data.lastSummarizedIndex) ? data.lastSummarizedIndex : 0,
     };
   }
@@ -154,6 +155,18 @@ class PersistentSessionStore {
       longTermMemory: [...session.longTermMemory],
       lastSummarizedIndex: session.lastSummarizedIndex,
     };
+  }
+
+  /**
+   * Clear summarization / long-term memory for a session (keeps messages).
+   * @param {string} sessionId
+   */
+  clearMemory(sessionId) {
+    const session = this._ensure(sessionId);
+    session.conversationSummary = '';
+    session.longTermMemory = [];
+    session.lastSummarizedIndex = 0;
+    this._persist(sessionId);
   }
 
   /**

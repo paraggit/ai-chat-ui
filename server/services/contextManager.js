@@ -1,5 +1,5 @@
 import { sessionStore } from './sessionStore.js';
-import { buildModelMessages } from './promptService.js';
+import { buildModelMessages, sanitizeMemoryForPrompt } from './promptService.js';
 import { summarizeMessages } from './memoryService.js';
 import { estimateMessagesTokens, truncateToTokenBudget } from './tokenCounter.js';
 
@@ -19,7 +19,7 @@ export async function prepareConversationContext(sessionId, history, config) {
   const summarizeThreshold =
     Number(process.env.CONTEXT_SUMMARIZE_THRESHOLD) || DEFAULT_SUMMARIZE_THRESHOLD;
 
-  let memory = sessionStore.getMemory(sessionId);
+  let memory = sanitizeMemoryForPrompt(sessionStore.getMemory(sessionId));
   let summarized = false;
 
   const unsummarizedCount = history.length - memory.lastSummarizedIndex;
@@ -38,7 +38,7 @@ export async function prepareConversationContext(sessionId, history, config) {
         memory.conversationSummary
       );
       sessionStore.setLastSummarizedIndex(sessionId, summarizeEnd);
-      memory = sessionStore.getMemory(sessionId);
+      memory = sanitizeMemoryForPrompt(sessionStore.getMemory(sessionId));
       summarized = true;
     }
   }

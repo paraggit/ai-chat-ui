@@ -1,20 +1,46 @@
+import { isLowQualityText, sanitizeMemoryFacts, sanitizeMemoryText } from '../utils/textQuality.js';
+
 const SYSTEM_PROMPT = 'You are a helpful AI assistant.';
+
+/**
+ * @param {{ role: string, content?: string, images?: string[] }} msg
+ */
+function isValidHistoryMessage(msg) {
+  const hasContent = Boolean(msg.content?.trim());
+  const hasImages = Array.isArray(msg.images) && msg.images.length > 0;
+  if (!hasContent && !hasImages) return false;
+  if (msg.role === 'assistant' && hasContent && isLowQualityText(msg.content)) {
+    return false;
+  }
+  return msg.role === 'user' || msg.role === 'assistant';
+}
+
+/**
+ * @param {{ conversationSummary?: string, longTermMemory?: string[] }} memory
+ */
+export function sanitizeMemoryForPrompt(memory = {}) {
+  return {
+    conversationSummary: sanitizeMemoryText(memory.conversationSummary),
+    longTermMemory: sanitizeMemoryFacts(memory.longTermMemory),
+  };
+}
 
 /**
  * @param {{ conversationSummary?: string, longTermMemory?: string[] }} [memory]
  */
 export function buildSystemPrompt(memory = {}) {
+  const safeMemory = sanitizeMemoryForPrompt(memory);
   const parts = [SYSTEM_PROMPT];
 
-  if (memory.longTermMemory?.length) {
+  if (safeMemory.longTermMemory.length) {
     parts.push(
       'Long-term user memory:\n' +
-        memory.longTermMemory.map((fact) => `- ${fact}`).join('\n')
+        safeMemory.longTermMemory.map((fact) => `- ${fact}`).join('\n')
     );
   }
 
-  if (memory.conversationSummary?.trim()) {
-    parts.push(`Earlier conversation summary:\n${memory.conversationSummary.trim()}`);
+  if (safeMemory.conversationSummary) {
+    parts.push(`Earlier conversation summary:\n${safeMemory.conversationSummary}`);
   }
 
   return parts.join('\n\n');
@@ -30,12 +56,11 @@ export function buildModelMessages(recentHistory, memory = {}) {
   const messages = [{ role: 'system', content: buildSystemPrompt(memory) }];
 
   for (const msg of recentHistory) {
-    if (msg.role === 'user' || msg.role === 'assistant') {
-      messages.push({
-        role: msg.role,
-        content: msg.content || '',
-      });
-    }
+    if (!isValidHistoryMessage(msg)) continue;
+    messages.push({
+      role: msg.role,
+      content: msg.content?.trim() || '',
+    });
   }
 
   return messages;

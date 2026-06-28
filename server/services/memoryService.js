@@ -1,6 +1,7 @@
 import { sessionStore } from './sessionStore.js';
 import { completeMessages } from './hfService.js';
 import { truncateToTokenBudget } from './tokenCounter.js';
+import { isLowQualityText, sanitizeMemoryFacts, sanitizeMemoryText } from '../utils/textQuality.js';
 
 const SUMMARY_MAX_TOKENS = Number(process.env.CONTEXT_SUMMARY_MAX_TOKENS) || 400;
 const LONG_TERM_MAX_FACTS = Number(process.env.CONTEXT_LONG_TERM_MAX_FACTS) || 20;
@@ -31,6 +32,7 @@ function parseSummaryResponse(text) {
 function formatMessagesForSummary(messages) {
   return messages
     .filter((m) => m.role === 'user' || m.role === 'assistant')
+    .filter((m) => m.content?.trim() && !isLowQualityText(m.content))
     .map((m) => `${m.role === 'user' ? 'User' : 'Assistant'}: ${m.content}`)
     .join('\n');
 }
@@ -46,6 +48,11 @@ export async function summarizeMessages(sessionId, messagesToSummarize, config, 
   if (messagesToSummarize.length === 0) return;
 
   const transcript = formatMessagesForSummary(messagesToSummarize);
+  if (!transcript.trim()) {
+    console.warn(`[memoryService] Skipping summarization — no usable messages`);
+    return;
+  }
+
   const summaryMessages = [
     {
       role: 'system',
@@ -71,15 +78,28 @@ export async function summarizeMessages(sessionId, messagesToSummarize, config, 
   });
 
   const { summary, facts } = parseSummaryResponse(result.content);
+  const safeSummary = sanitizeMemoryText(summary);
+  const safeFacts = sanitizeMemoryFacts(facts);
+
+  if (!safeSummary && safeFacts.length === 0) {
+    console.warn('[memoryService] Rejected low-quality summarization output');
+    return;
+  }
+
   const mergedSummary = truncateToTokenBudget(
-    existingSummary && summary ? `${existingSummary}\n\n${summary}` : summary || existingSummary,
+    existingSummary && safeSummary ? `${existingSummary}\n\n${safeSummary}` : safeSummary || existingSummary,
     SUMMARY_MAX_TOKENS * 2
   );
 
-  sessionStore.setConversationSummary(sessionId, mergedSummary);
-  sessionStore.mergeLongTermMemory(sessionId, facts.slice(0, LONG_TERM_MAX_FACTS));
+  const finalSummary = sanitizeMemoryText(mergedSummary);
+  if (finalSummary) {
+    sessionStore.setConversationSummary(sessionId, finalSummary);
+  }
+  if (safeFacts.length) {
+    sessionStore.mergeLongTermMemory(sessionId, safeFacts.slice(0, LONG_TERM_MAX_FACTS));
+  }
 
   console.log(
-    `[memoryService] Updated memory (${mergedSummary.length} chars, ${facts.length} new facts)`
+    `[memoryService] Updated memory (${finalSummary.length} chars, ${safeFacts.length} new facts)`
   );
 }

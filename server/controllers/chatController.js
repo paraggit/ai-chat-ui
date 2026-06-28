@@ -2,6 +2,7 @@ import { sessionStore } from '../services/sessionStore.js';
 import { chat, getFallbackResponse, resolveHFConfig } from '../services/hfService.js';
 import { prepareConversationContext } from '../services/contextManager.js';
 import { sanitizeImages, wantsImageGeneration } from '../utils/images.js';
+import { isLowQualityText } from '../utils/textQuality.js';
 import { initSSE, sendError, sendDone, sendImage, sendMessage as sendFullMessage, sendMetadata, sendStatus, sendToken, simulateStream } from '../utils/stream.js';
 
 /**
@@ -140,6 +141,44 @@ export async function streamChat(req, res) {
         : {}),
     };
     responseImages = result.images;
+
+    if (isLowQualityText(fullResponse)) {
+      console.warn('[chatController] Degenerate model output detected');
+      if (contextInfo?.memoryUsed) {
+        sessionStore.clearMemory(sessionId);
+      }
+
+      if (!res.writableEnded) {
+        sendStatus(res, 'Retrying with a clean context…');
+      }
+
+      try {
+        const retry = await chat(history, trimmedMessage, hfConfig, sanitizedImages);
+        if (retry.text && !isLowQualityText(retry.text)) {
+          fullResponse = retry.text;
+          responseMetadata = {
+            ...(retry.metadata ?? {}),
+            outputTokenLimit: hfConfig.maxTokens,
+            retriedWithoutMemory: Boolean(contextInfo?.memoryUsed),
+          };
+          if (!res.writableEnded) {
+            sendFullMessage(res, fullResponse, responseMetadata);
+          }
+        } else {
+          fullResponse =
+            'The model returned unusable output. Try starting a new chat, lowering temperature, or switching models.';
+          responseMetadata = {
+            ...(responseMetadata ?? {}),
+            lowQuality: true,
+          };
+          if (!res.writableEnded) {
+            sendFullMessage(res, fullResponse, responseMetadata);
+          }
+        }
+      } catch (retryError) {
+        console.warn('[chatController] Retry after low-quality output failed:', retryError.message);
+      }
+    }
 
     if (res.writableEnded) {
       console.warn('[chatController] Response already closed before streaming');
