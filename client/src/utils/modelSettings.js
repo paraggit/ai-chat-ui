@@ -1,6 +1,8 @@
 const SETTINGS_KEY = 'hf-chat-pro-model-settings';
 
-export const DEFAULT_MAX_TOKENS = 4096;
+export const DEFAULT_MAX_TOKENS = 8192;
+/** @deprecated legacy default — migrated on load */
+const LEGACY_LOW_MAX_TOKENS = 4096;
 
 export const PROVIDERS = {
   HUGGINGFACE: 'huggingface',
@@ -53,7 +55,11 @@ export function loadModelSettings() {
       visionModel: parsed.visionModel ?? DEFAULTS.visionModel,
       imageGenModel: parsed.imageGenModel ?? DEFAULTS.imageGenModel,
       maxTokens:
-        Number.isFinite(maxTokens) && maxTokens > 0 ? maxTokens : DEFAULTS.maxTokens,
+        Number.isFinite(maxTokens) && maxTokens > 0
+          ? maxTokens <= LEGACY_LOW_MAX_TOKENS
+            ? DEFAULT_MAX_TOKENS
+            : maxTokens
+          : DEFAULTS.maxTokens,
     };
   } catch {
     return { ...DEFAULTS };

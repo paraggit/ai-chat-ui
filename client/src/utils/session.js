@@ -14,6 +14,14 @@ export function getSessionId() {
 }
 
 /**
+ * Switch to an existing chat session.
+ * @param {string} sessionId
+ */
+export function setSessionId(sessionId) {
+  localStorage.setItem(SESSION_KEY, sessionId);
+}
+
+/**
  * Start a new chat session.
  * @returns {string}
  */

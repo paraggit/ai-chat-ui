@@ -9,8 +9,23 @@ import { getInitialDarkMode, setDarkMode } from './utils/theme.js';
 
 export default function App() {
   const { settings, configured, updateSettings } = useModelSettings();
-  const { messages, isLoading, error, sessionId, sendMessage, clearChat } = useChat(settings);
+  const {
+    messages,
+    sessions,
+    isLoading,
+    error,
+    sessionId,
+    sendMessage,
+    stopGeneration,
+    copyLastAssistant,
+    newChat,
+    selectSession,
+    deleteSession,
+  } = useChat(settings);
   const [isDark, setIsDark] = useState(getInitialDarkMode);
+
+  const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant');
+  const canCopyLast = Boolean(lastAssistant?.content?.trim() || lastAssistant?.metadata?.reasoning);
 
   useEffect(() => {
     setDarkMode(isDark);
@@ -21,10 +36,14 @@ export default function App() {
   return (
     <div className="flex h-full">
       <Sidebar
-        onNewChat={clearChat}
+        onNewChat={newChat}
         isDark={isDark}
         onToggleDark={toggleDark}
         sessionId={sessionId}
+        sessions={sessions}
+        onSelectSession={selectSession}
+        onDeleteSession={deleteSession}
+        chatBusy={isLoading}
         settings={settings}
         configured={configured}
         onSaveSettings={updateSettings}
@@ -40,6 +59,10 @@ export default function App() {
         <MessageList messages={messages} isDark={isDark} />
         <ChatInput
           onSend={sendMessage}
+          onStop={stopGeneration}
+          onCopyLast={copyLastAssistant}
+          isGenerating={isLoading}
+          canCopyLast={canCopyLast}
           disabled={isLoading}
           configured={configured}
           localMode={isLocalProvider(settings)}

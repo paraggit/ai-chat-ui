@@ -3,6 +3,7 @@ import TypingIndicator from './TypingIndicator.jsx';
 import MetadataModal, { hasMetadata } from './MetadataModal.jsx';
 import MarkdownContent from './MarkdownContent.jsx';
 import ReasoningBlock, { getReasoning } from './ReasoningBlock.jsx';
+import { copyMessageText } from '../utils/messageCopy.js';
 
 /**
  * @param {{ src: string, alt: string, isUser?: boolean }} props
@@ -42,9 +43,11 @@ export default function MessageBubble({ message, isDark }) {
   const metadataAvailable = hasMetadata(message.metadata);
   const reasoning = getReasoning(message.metadata);
   const showTyping = message.streaming && !message.content && !reasoning && !(images.length);
+  const canCopy = !isUser && Boolean(message.content || reasoning);
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(message.content);
+    const ok = await copyMessageText(message);
+    if (!ok) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -59,9 +62,13 @@ export default function MessageBubble({ message, isDark }) {
               : 'bg-white dark:bg-surface-dark border border-gray-200 dark:border-gray-700'
           }`}
         >
-          {!isUser && (message.content || reasoning) && !message.streaming && (
-            <div className="absolute -top-2 -right-2 hidden gap-1 group-hover:flex">
-              {metadataAvailable && (
+          {!isUser && canCopy && (
+            <div
+              className={`absolute -top-2 -right-2 flex gap-1 ${
+                message.streaming ? 'opacity-100' : 'hidden group-hover:flex'
+              }`}
+            >
+              {metadataAvailable && !message.streaming && (
                 <button
                   type="button"
                   onClick={() => setShowMetadata(true)}
@@ -127,10 +134,17 @@ export default function MessageBubble({ message, isDark }) {
                 <p className="text-sm italic opacity-70">No response received.</p>
               )}
 
+              {!isUser && message.metadata?.stopped && !message.streaming && (
+                <p className="text-xs italic text-gray-500 dark:text-gray-400">Generation stopped.</p>
+              )}
+
               {!isUser && message.metadata?.finishReason === 'length' && !message.streaming && (
                 <p className="text-xs italic text-amber-600 dark:text-amber-400">
-                  Response was cut off at the token limit. Increase Max tokens in Model settings for
-                  longer replies.
+                  Response hit the output token limit
+                  {typeof message.metadata.outputTokenLimit === 'number'
+                    ? ` (${message.metadata.outputTokenLimit.toLocaleString()} tokens)`
+                    : ''}
+                  . Open Model settings, raise Max tokens to 8192 or 16384, click Save, then try again.
                 </p>
               )}
 

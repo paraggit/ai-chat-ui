@@ -43,7 +43,10 @@ export async function streamChat(req, res) {
       endpoint: typeof endpoint === 'string' ? endpoint.trim() : undefined,
       visionModel: typeof visionModel === 'string' ? visionModel.trim() : undefined,
       imageGenModel: typeof imageGenModel === 'string' ? imageGenModel.trim() : undefined,
-      maxTokens,
+      maxTokens:
+        maxTokens !== undefined && maxTokens !== null && maxTokens !== ''
+          ? Number(maxTokens)
+          : undefined,
     });
   } catch (error) {
     return res.status(400).json({ error: error.message });
@@ -121,6 +124,7 @@ export async function streamChat(req, res) {
     fullResponse = result.text || fullResponse || 'Done.';
     responseMetadata = {
       ...(result.metadata ?? responseMetadata ?? {}),
+      outputTokenLimit: hfConfig.maxTokens,
       ...(contextInfo
         ? {
             context: {
@@ -195,7 +199,24 @@ export function getHistory(req, res) {
 
   const history = sessionStore.getHistory(sessionId);
   const memory = sessionStore.getMemory(sessionId);
-  res.json({ sessionId, history, memory });
+  const sessions = sessionStore.listSessions();
+  const meta = sessions.find((s) => s.id === sessionId);
+
+  res.json({
+    sessionId,
+    title: meta?.title ?? 'New chat',
+    history,
+    memory,
+  });
+}
+
+/**
+ * List saved chat sessions.
+ * @param {import('express').Request} _req
+ * @param {import('express').Response} res
+ */
+export function listSessions(_req, res) {
+  res.json({ sessions: sessionStore.listSessions() });
 }
 
 /**

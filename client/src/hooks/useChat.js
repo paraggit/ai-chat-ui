@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getSessionId, resetSessionId } from '../utils/session.js';
+import { getSessionId, resetSessionId, setSessionId as persistSessionId } from '../utils/session.js';
 import { toApiPayload } from '../utils/modelSettings.js';
 import { apiUrl } from '../utils/api.js';
+import { copyMessageText } from '../utils/messageCopy.js';
 
 /**
  * @typedef {{
@@ -16,38 +17,85 @@ import { apiUrl } from '../utils/api.js';
  */
 
 /**
+ * @typedef {{
+ *   id: string,
+ *   title: string,
+ *   createdAt: string,
+ *   updatedAt: string,
+ *   messageCount: number,
+ * }} ChatSession
+ */
+
+/**
  * @param {import('../utils/modelSettings.js').loadModelSettings extends () => infer R ? R : never} modelSettings
  */
 export function useChat(modelSettings) {
   const [messages, setMessages] = useState(/** @type {Message[]} */ ([]));
+  const [sessions, setSessions] = useState(/** @type {ChatSession[]} */ ([]));
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(/** @type {string | null} */ (null));
-  const [sessionId, setSessionId] = useState(getSessionId);
+  const [sessionId, setSessionIdState] = useState(getSessionId);
   const abortRef = useRef(/** @type {AbortController | null} */ (null));
   const isSendingRef = useRef(false);
+  const stoppedByUserRef = useRef(false);
+  const activeAssistantIdRef = useRef(/** @type {string | null} */ (null));
 
-  const loadHistory = useCallback(async (sid) => {
-    if (isSendingRef.current) return;
-    try {
-      const res = await fetch(apiUrl(`/api/chat/${sid}`));
-      if (!res.ok) return;
-      const data = await res.json();
-      const history = (data.history ?? []).map((m, i) => ({
+  const mapHistory = useCallback(
+    (sid, history) =>
+      (history ?? []).map((m, i) => ({
         id: `${sid}-${i}`,
         role: m.role,
         content: m.content ?? '',
         images: m.images,
         metadata: m.metadata,
-      }));
-      setMessages(history);
+      })),
+    []
+  );
+
+  const loadSessionList = useCallback(async () => {
+    try {
+      const res = await fetch(apiUrl('/api/sessions'));
+      if (!res.ok) return;
+      const data = await res.json();
+      setSessions(data.sessions ?? []);
     } catch {
-      // Server may be down on first load — ignore
+      // Server may be down — ignore
     }
   }, []);
+
+  const loadHistory = useCallback(
+    async (sid) => {
+      if (isSendingRef.current) return;
+      try {
+        const res = await fetch(apiUrl(`/api/chat/${sid}`));
+        if (!res.ok) return;
+        const data = await res.json();
+        setMessages(mapHistory(sid, data.history));
+      } catch {
+        // Server may be down on first load — ignore
+      }
+    },
+    [mapHistory]
+  );
+
+  useEffect(() => {
+    loadSessionList();
+  }, [loadSessionList]);
 
   useEffect(() => {
     loadHistory(sessionId);
   }, [sessionId, loadHistory]);
+
+  const selectSession = useCallback(
+    (id) => {
+      if (id === sessionId || isLoading) return;
+      abortRef.current?.abort();
+      persistSessionId(id);
+      setSessionIdState(id);
+      setError(null);
+    },
+    [sessionId, isLoading]
+  );
 
   const sendMessage = useCallback(
     async (text, images = []) => {
@@ -73,6 +121,9 @@ export function useChat(modelSettings) {
         streaming: true,
         status: 'Sending…',
       });
+
+      activeAssistantIdRef.current = assistantMsg.id;
+      stoppedByUserRef.current = false;
 
       setMessages((prev) => [...prev, userMsg, assistantMsg]);
 
@@ -186,8 +237,27 @@ export function useChat(modelSettings) {
             }
           }
         }
+
+        await loadSessionList();
       } catch (err) {
-        if (err.name === 'AbortError') return;
+        if (err.name === 'AbortError') {
+          if (stoppedByUserRef.current) {
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === assistantMsg.id
+                  ? {
+                      ...m,
+                      streaming: false,
+                      status: undefined,
+                      metadata: { ...(m.metadata ?? {}), stopped: true },
+                    }
+                  : m
+              )
+            );
+          }
+          stoppedByUserRef.current = false;
+          return;
+        }
         const message = err.message || 'Failed to send message';
         setError(message);
         setMessages((prev) =>
@@ -203,6 +273,7 @@ export function useChat(modelSettings) {
         );
       } finally {
         isSendingRef.current = false;
+        activeAssistantIdRef.current = null;
         setIsLoading(false);
         setMessages((prev) =>
           prev.map((m) =>
@@ -213,27 +284,68 @@ export function useChat(modelSettings) {
         );
       }
     },
-    [isLoading, sessionId, modelSettings]
+    [isLoading, sessionId, modelSettings, loadSessionList]
   );
 
-  const clearChat = useCallback(async () => {
+  const newChat = useCallback(async () => {
     abortRef.current?.abort();
-    const oldSessionId = sessionId;
     const newSessionId = resetSessionId();
-    setSessionId(newSessionId);
+    setSessionIdState(newSessionId);
     setMessages([]);
     setError(null);
+    await loadSessionList();
+  }, [loadSessionList]);
 
-    try {
-      await fetch(apiUrl('/api/chat'), {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId: oldSessionId }),
-      });
-    } catch {
-      // Non-critical
-    }
-  }, [sessionId]);
+  const deleteSession = useCallback(
+    async (targetId) => {
+      if (isLoading) return;
 
-  return { messages, isLoading, error, sessionId, sendMessage, clearChat };
+      try {
+        await fetch(apiUrl('/api/chat'), {
+          method: 'DELETE',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId: targetId }),
+        });
+      } catch {
+        // Non-critical
+      }
+
+      if (targetId === sessionId) {
+        const newSessionId = resetSessionId();
+        setSessionIdState(newSessionId);
+        setMessages([]);
+        setError(null);
+      }
+
+      await loadSessionList();
+    },
+    [sessionId, isLoading, loadSessionList]
+  );
+
+  const stopGeneration = useCallback(() => {
+    if (!isLoading) return;
+    stoppedByUserRef.current = true;
+    abortRef.current?.abort();
+  }, [isLoading]);
+
+  const copyLastAssistant = useCallback(async () => {
+    const target = [...messages].reverse().find((m) => m.role === 'assistant');
+    if (!target) return false;
+    return copyMessageText(target);
+  }, [messages]);
+
+  return {
+    messages,
+    sessions,
+    isLoading,
+    error,
+    sessionId,
+    sendMessage,
+    stopGeneration,
+    copyLastAssistant,
+    newChat,
+    selectSession,
+    deleteSession,
+    clearChat: newChat,
+  };
 }

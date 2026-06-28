@@ -14,7 +14,7 @@ import {
 const DEFAULT_TIMEOUT_MS = 15000;
 const CUSTOM_ENDPOINT_TIMEOUT_MS = 180000;
 const LOCAL_LLM_TIMEOUT_MS = 120000;
-const DEFAULT_MAX_TOKENS = 4096;
+const DEFAULT_MAX_TOKENS = 8192;
 const LOCAL_LLM_DEFAULT_URL = 'http://localhost:11434';
 const LOCAL_LLM_DEFAULT_MODEL = 'llama3.2';
 const PROVIDER_LOCAL = 'local';
@@ -146,20 +146,31 @@ export function resolveHFConfig(overrides = {}) {
  * @property {(metadata: Record<string, unknown>) => void} [onMetadata]
  */
 
+function buildChatRequestBody(config, messages, overrides = {}) {
+  const body = {
+    model: config.model,
+    messages,
+    max_tokens: config.maxTokens,
+    temperature: overrides.temperature ?? 0.7,
+    stream: overrides.stream ?? false,
+  };
+  if (isLocalProvider(config.provider)) {
+    body.options = { num_predict: config.maxTokens };
+  }
+  return body;
+}
+
 /**
  * @param {Array<{ role: string, content: string }>} history
  * @param {string} newMessage
  * @param {HFConfig} config
  * @param {StreamHandlers} handlers
+ * @param {Array<{ role: string, content: string }>} [apiMessages]
  */
 async function streamGenerateResponse(history, newMessage, config, handlers, apiMessages) {
   const messages = apiMessages ?? buildChatMessages(history, newMessage);
-  const body = {
-    model: config.model,
-    messages,
-    max_tokens: config.maxTokens,
-    temperature: 0.7,
-  };
+  const body = buildChatRequestBody(config, messages, { stream: true });
+  console.log(`[hfService] Output limit: max_tokens=${config.maxTokens}`);
 
   if (isLocalProvider(config.provider)) {
     /** @type {Record<string, string>} */

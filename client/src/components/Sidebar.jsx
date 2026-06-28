@@ -1,4 +1,5 @@
 import ModelSettings from './ModelSettings.jsx';
+import ChatHistoryList from './ChatHistoryList.jsx';
 
 /**
  * @param {{
@@ -6,6 +7,10 @@ import ModelSettings from './ModelSettings.jsx';
  *   isDark: boolean,
  *   onToggleDark: () => void,
  *   sessionId: string,
+ *   sessions: Array<{ id: string, title: string, updatedAt: string, messageCount: number }>,
+ *   onSelectSession: (id: string) => void,
+ *   onDeleteSession: (id: string) => void,
+ *   chatBusy?: boolean,
  *   settings: { apiKey: string, model: string, endpoint: string },
  *   configured: boolean,
  *   onSaveSettings: (settings: { apiKey: string, model: string, endpoint: string }) => void,
@@ -16,6 +21,10 @@ export default function Sidebar({
   isDark,
   onToggleDark,
   sessionId,
+  sessions,
+  onSelectSession,
+  onDeleteSession,
+  chatBusy,
   settings,
   configured,
   onSaveSettings,
@@ -40,7 +49,8 @@ export default function Sidebar({
         <button
           type="button"
           onClick={onNewChat}
-          className="flex w-full items-center gap-2 rounded-lg border border-gray-200 px-3 py-2.5 text-sm font-medium transition hover:bg-white dark:border-gray-600 dark:hover:bg-surface-dark"
+          disabled={chatBusy}
+          className="flex w-full items-center gap-2 rounded-lg border border-gray-200 px-3 py-2.5 text-sm font-medium transition hover:bg-white disabled:opacity-50 dark:border-gray-600 dark:hover:bg-surface-dark"
         >
           <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -49,10 +59,14 @@ export default function Sidebar({
         </button>
 
         <div className="mt-4 px-1">
-          <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Current session</p>
-          <p className="mt-1 truncate font-mono text-xs text-gray-500 dark:text-gray-400" title={sessionId}>
-            {sessionId.slice(0, 8)}…
-          </p>
+          <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">Chat history</p>
+          <ChatHistoryList
+            sessions={sessions}
+            activeSessionId={sessionId}
+            onSelect={onSelectSession}
+            onDelete={onDeleteSession}
+            disabled={chatBusy}
+          />
         </div>
 
         <ModelSettings

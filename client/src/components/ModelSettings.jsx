@@ -232,8 +232,8 @@ export default function ModelSettings({ settings, configured, onSave }) {
               id="hf-max-tokens"
               type="number"
               min={256}
-              max={32768}
-              step={256}
+              max={131072}
+              step={512}
               value={draft.maxTokens}
               onChange={(e) =>
                 setDraft((prev) => ({
@@ -243,6 +243,10 @@ export default function ModelSettings({ settings, configured, onSave }) {
               }
               className="w-full rounded-md border border-gray-200 bg-surface-secondary px-2.5 py-2 font-mono text-xs outline-none focus:border-accent dark:border-gray-600 dark:bg-surface-dark-secondary"
             />
+            <p className="mt-1 text-[10px] leading-snug text-gray-400">
+              Max length of each reply (output tokens). Default {DEFAULT_MAX_TOKENS}. Reasoning /
+              local models often need 8192–16384+. Save after changing.
+            </p>
           </div>
 
           {!isLocal && (
