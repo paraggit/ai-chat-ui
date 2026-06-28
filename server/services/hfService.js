@@ -152,8 +152,8 @@ export function resolveHFConfig(overrides = {}) {
  * @param {HFConfig} config
  * @param {StreamHandlers} handlers
  */
-async function streamGenerateResponse(history, newMessage, config, handlers) {
-  const messages = buildChatMessages(history, newMessage);
+async function streamGenerateResponse(history, newMessage, config, handlers, apiMessages) {
+  const messages = apiMessages ?? buildChatMessages(history, newMessage);
   const body = {
     model: config.model,
     messages,
@@ -354,6 +354,91 @@ async function generateViaRouter(history, newMessage, config) {
 }
 
 /**
+ * Non-streaming completion with a pre-built messages array (used for summarization).
+ * @param {Array<{ role: string, content: string }>} messages
+ * @param {HFConfig} config
+ * @param {{ maxTokens?: number, label?: string }} [options]
+ * @returns {Promise<import('./responseParser.js').ParsedModelResponse>}
+ */
+export async function completeMessages(messages, config, options = {}) {
+  const maxTokens = options.maxTokens ?? 512;
+  const label = options.label || 'Chat API';
+  const body = {
+    model: config.model,
+    messages,
+    max_tokens: maxTokens,
+    temperature: 0.3,
+    stream: false,
+  };
+
+  if (isLocalProvider(config.provider)) {
+    /** @type {Record<string, string>} */
+    const headers = { 'Content-Type': 'application/json' };
+    applyAuthHeader(config.token, headers);
+    const url = buildChatCompletionsUrl(config.endpoint);
+    const response = await fetchWithTimeout(
+      url,
+      { method: 'POST', headers, body: JSON.stringify(body) },
+      config.timeoutMs
+    );
+    if (!response.ok) await readApiError(response, label);
+    const data = await response.json();
+    return parseModelResponse(data, { strategy: 'completion-local' });
+  }
+
+  if (isCustomEndpoint(config.endpoint)) {
+    const base = config.endpoint.replace(/\/$/, '');
+    const headers = {
+      Authorization: `Bearer ${config.token}`,
+      'Content-Type': 'application/json',
+    };
+    const urls = [`${base}/v1/chat/completions`, buildChatCompletionsUrl(base)];
+    /** @type {Error | null} */
+    let lastError = null;
+
+    for (const url of urls) {
+      try {
+        const response = await fetchWithTimeout(
+          url,
+          { method: 'POST', headers, body: JSON.stringify(body) },
+          config.timeoutMs
+        );
+        if (!response.ok) {
+          lastError = new Error(`${label} error (${response.status})`);
+          continue;
+        }
+        const data = await response.json();
+        return parseModelResponse(data, { strategy: 'completion-endpoint' });
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+      }
+    }
+
+    throw lastError ?? new Error(`${label} completion failed`);
+  }
+
+  const response = await fetchWithTimeout(
+    HF_ROUTER_CHAT_URL,
+    {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${config.token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    },
+    config.timeoutMs
+  );
+
+  if (!response.ok) {
+    await readApiError(response, label);
+  }
+
+  const data = await response.json();
+  return parseModelResponse(data, { strategy: 'completion-router' });
+}
+
+/**
  * Try multiple request formats against a dedicated Inference Endpoint.
  * @param {Array<{ role: string, content: string }>} history
  * @param {string} newMessage
@@ -459,9 +544,10 @@ async function generateViaCustomEndpoint(history, newMessage, config) {
  * @param {HFConfig} config
  * @param {string[]} [images]
  * @param {StreamHandlers} [streamHandlers]
+ * @param {Array<{ role: string, content: string }>} [apiMessages]
  * @returns {Promise<{ text: string, metadata: Record<string, unknown> | null, images: string[] }>}
  */
-export async function chat(history, newMessage, config, images = [], streamHandlers) {
+export async function chat(history, newMessage, config, images = [], streamHandlers, apiMessages) {
   const textParts = [];
   const outputImages = [];
   /** @type {Record<string, unknown> | null} */
@@ -490,7 +576,13 @@ export async function chat(history, newMessage, config, images = [], streamHandl
 
   if (images.length === 0 && !wantsImageGeneration(trimmedMessage)) {
     if (streamHandlers) {
-      const llmResult = await streamGenerateResponse(history, trimmedMessage, config, streamHandlers);
+      const llmResult = await streamGenerateResponse(
+        history,
+        trimmedMessage,
+        config,
+        streamHandlers,
+        apiMessages
+      );
       textParts.push(llmResult.content);
       responseMetadata = llmResult.metadata;
     } else {

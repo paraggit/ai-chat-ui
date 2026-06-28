@@ -1,15 +1,35 @@
 const SYSTEM_PROMPT = 'You are a helpful AI assistant.';
 
 /**
- * Build OpenAI-style messages for the HF router chat completions API.
- * @param {Array<{ role: string, content: string }>} history
- * @param {string} newMessage
+ * @param {{ conversationSummary?: string, longTermMemory?: string[] }} [memory]
+ */
+export function buildSystemPrompt(memory = {}) {
+  const parts = [SYSTEM_PROMPT];
+
+  if (memory.longTermMemory?.length) {
+    parts.push(
+      'Long-term user memory:\n' +
+        memory.longTermMemory.map((fact) => `- ${fact}`).join('\n')
+    );
+  }
+
+  if (memory.conversationSummary?.trim()) {
+    parts.push(`Earlier conversation summary:\n${memory.conversationSummary.trim()}`);
+  }
+
+  return parts.join('\n\n');
+}
+
+/**
+ * Build OpenAI-style messages for the model (history should already include the latest user turn).
+ * @param {Array<{ role: string, content: string }>} recentHistory
+ * @param {{ conversationSummary?: string, longTermMemory?: string[] }} [memory]
  * @returns {Array<{ role: string, content: string }>}
  */
-export function buildChatMessages(history, newMessage) {
-  const messages = [{ role: 'system', content: SYSTEM_PROMPT }];
+export function buildModelMessages(recentHistory, memory = {}) {
+  const messages = [{ role: 'system', content: buildSystemPrompt(memory) }];
 
-  for (const msg of history) {
+  for (const msg of recentHistory) {
     if (msg.role === 'user' || msg.role === 'assistant') {
       messages.push({
         role: msg.role,
@@ -18,8 +38,22 @@ export function buildChatMessages(history, newMessage) {
     }
   }
 
-  messages.push({ role: 'user', content: newMessage });
   return messages;
+}
+
+/**
+ * Build OpenAI-style messages for the HF router chat completions API.
+ * @param {Array<{ role: string, content: string }>} history
+ * @param {string} newMessage
+ * @param {{ conversationSummary?: string, longTermMemory?: string[] }} [memory]
+ * @returns {Array<{ role: string, content: string }>}
+ */
+export function buildChatMessages(history, newMessage, memory = {}) {
+  const recent = [...history];
+  if (newMessage) {
+    recent.push({ role: 'user', content: newMessage });
+  }
+  return buildModelMessages(recent, memory);
 }
 
 /**

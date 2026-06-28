@@ -1,6 +1,7 @@
 import { sessionStore } from '../services/sessionStore.js';
 import { chat, getFallbackResponse, resolveHFConfig } from '../services/hfService.js';
-import { sanitizeImages } from '../utils/images.js';
+import { prepareConversationContext } from '../services/contextManager.js';
+import { sanitizeImages, wantsImageGeneration } from '../utils/images.js';
 import { initSSE, sendError, sendDone, sendImage, sendMessage as sendFullMessage, sendMetadata, sendStatus, sendToken, simulateStream } from '../utils/stream.js';
 
 /**
@@ -56,7 +57,26 @@ export async function streamChat(req, res) {
     images: sanitizedImages.length > 0 ? sanitizedImages : undefined,
   });
 
+  const fullHistory = sessionStore.getHistory(sessionId);
+  const useContextMemory =
+    sanitizedImages.length === 0 && !wantsImageGeneration(trimmedMessage);
+
   initSSE(res);
+  sendStatus(res, useContextMemory ? 'Preparing context…' : 'Connecting…');
+
+  /** @type {Awaited<ReturnType<typeof prepareConversationContext>> | null} */
+  let contextInfo = null;
+  if (useContextMemory) {
+    try {
+      contextInfo = await prepareConversationContext(sessionId, fullHistory, hfConfig);
+      if (contextInfo.summarized) {
+        sendStatus(res, 'Conversation memory updated…');
+      }
+    } catch (error) {
+      console.warn('[chatController] Context preparation failed:', error.message);
+    }
+  }
+
   sendStatus(
     res,
     hfConfig.provider === 'local'
@@ -76,23 +96,45 @@ export async function streamChat(req, res) {
   let streamedToClient = false;
 
   try {
-    const result = await chat(history, trimmedMessage, hfConfig, sanitizedImages, {
-      onToken: (token) => {
-        if (res.writableEnded) return;
-        streamedToClient = true;
-        fullResponse += token;
-        sendToken(res, token);
+    const result = await chat(
+      history,
+      trimmedMessage,
+      hfConfig,
+      sanitizedImages,
+      {
+        onToken: (token) => {
+          if (res.writableEnded) return;
+          streamedToClient = true;
+          fullResponse += token;
+          sendToken(res, token);
+        },
+        onMetadata: (metadata) => {
+          responseMetadata = metadata;
+          if (!res.writableEnded) {
+            sendMetadata(res, metadata);
+          }
+        },
       },
-      onMetadata: (metadata) => {
-        responseMetadata = metadata;
-        if (!res.writableEnded) {
-          sendMetadata(res, metadata);
-        }
-      },
-    });
+      contextInfo?.messages
+    );
 
     fullResponse = result.text || fullResponse || 'Done.';
-    responseMetadata = result.metadata ?? responseMetadata;
+    responseMetadata = {
+      ...(result.metadata ?? responseMetadata ?? {}),
+      ...(contextInfo
+        ? {
+            context: {
+              tokenEstimate: contextInfo.tokenEstimate,
+              maxContextTokens: contextInfo.maxContextTokens,
+              recentMessageCount: contextInfo.recentMessageCount,
+              totalMessageCount: contextInfo.totalMessageCount,
+              trimmedMessages: contextInfo.trimmedMessages,
+              memoryUsed: contextInfo.memoryUsed,
+              summarized: contextInfo.summarized,
+            },
+          }
+        : {}),
+    };
     responseImages = result.images;
 
     if (res.writableEnded) {
@@ -152,7 +194,8 @@ export function getHistory(req, res) {
   }
 
   const history = sessionStore.getHistory(sessionId);
-  res.json({ sessionId, history });
+  const memory = sessionStore.getMemory(sessionId);
+  res.json({ sessionId, history, memory });
 }
 
 /**
