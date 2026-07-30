@@ -23,16 +23,18 @@ export async function prepareConversationContext(sessionId, history, config, cus
   const summarizeThreshold =
     Number(process.env.CONTEXT_SUMMARIZE_THRESHOLD) || DEFAULT_SUMMARIZE_THRESHOLD;
 
-  let memory = sanitizeMemoryForPrompt(sessionStore.getMemory(sessionId));
+  const rawMemory = sessionStore.getMemory(sessionId);
+  let memory = sanitizeMemoryForPrompt(rawMemory);
   let summarized = false;
 
-  const unsummarizedCount = history.length - memory.lastSummarizedIndex;
+  const lastSummarizedIndex = rawMemory?.lastSummarizedIndex ?? 0;
+  const unsummarizedCount = history.length - lastSummarizedIndex;
   const shouldSummarize =
     history.length >= summarizeThreshold && unsummarizedCount > maxRecent;
 
   if (shouldSummarize) {
     const summarizeEnd = history.length - maxRecent;
-    const messagesToSummarize = history.slice(memory.lastSummarizedIndex, summarizeEnd);
+    const messagesToSummarize = history.slice(lastSummarizedIndex, summarizeEnd);
 
     if (messagesToSummarize.length > 0) {
       await summarizeMessages(

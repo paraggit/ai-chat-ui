@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { exportSessionAsJson, exportSessionAsMarkdown } from '../utils/export.js';
 
 /**
@@ -18,6 +18,20 @@ export default function ChatHistoryList({
   disabled,
 }) {
   const [exportOpen, setExportOpen] = useState(null);
+  const dropdownRef = useRef(null);
+
+  useEffect(() => {
+    if (!exportOpen) return;
+
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setExportOpen(null);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [exportOpen]);
   if (sessions.length === 0) {
     return (
       <p className="px-1 py-2 text-[11px] text-gray-400">
@@ -88,7 +102,7 @@ export default function ChatHistoryList({
                 </button>
 
                 {exportOpen === session.id && (
-                  <div className="absolute right-0 top-7 z-10 rounded-md border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-600 dark:bg-surface-dark">
+                  <div ref={dropdownRef} className="absolute right-0 top-7 z-10 rounded-md border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-600 dark:bg-surface-dark">
                     <button
                       type="button"
                       onClick={() => { exportSessionAsJson(session.id); setExportOpen(null); }}

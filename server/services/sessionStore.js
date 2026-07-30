@@ -42,6 +42,16 @@ const DATA_DIR =
  * }} SessionSummary
  */
 
+/**
+ * Validate sessionId to prevent path traversal attacks.
+ * @param {string} id
+ */
+function validateSessionId(id) {
+  if (!id || typeof id !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(id)) {
+    throw new Error('Invalid session ID');
+  }
+}
+
 class PersistentSessionStore {
   constructor() {
     /** @type {Map<string, SessionData>} */
@@ -50,6 +60,7 @@ class PersistentSessionStore {
   }
 
   _sessionPath(sessionId) {
+    validateSessionId(sessionId);
     return path.join(DATA_DIR, `${sessionId}.json`);
   }
 

@@ -15,6 +15,8 @@ export default function SystemPrompt({ value, onChange }) {
     setDraft(value);
   }, [value]);
 
+  useEffect(() => () => clearTimeout(timerRef.current), []);
+
   const handleChange = (e) => {
     const next = e.target.value;
     setDraft(next);
