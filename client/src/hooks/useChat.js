@@ -682,28 +682,27 @@ export function useChat(modelSettings, systemPrompt, onSystemPromptLoad) {
 
   const keepCompareResponse = useCallback(
     async (messageId, responseIndex) => {
+      const msg = messages.find((m) => m.id === messageId);
+      const kept = msg?.compareResponses?.[responseIndex];
+      if (!kept) return;
+
       setMessages((prev) =>
         prev.map((m) => {
           if (m.id !== messageId || !m.compareResponses) return m;
-          const kept = m.compareResponses[responseIndex];
           return {
             ...m,
-            content: kept?.content || '',
+            content: kept.content,
             compare: false,
             compareResponses: undefined,
           };
         })
       );
 
-      const msg = messages.find((m) => m.id === messageId);
-      const kept = msg?.compareResponses?.[responseIndex];
-      if (kept) {
-        await fetch(apiUrl('/api/chat/keep'), {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ sessionId, content: kept.content }),
-        }).catch(() => {});
-      }
+      await fetch(apiUrl('/api/chat/keep'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId, content: kept.content }),
+      }).catch(() => {});
     },
     [messages, sessionId]
   );

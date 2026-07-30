@@ -422,6 +422,10 @@ export async function compareChat(req, res) {
     };
     config1 = resolveHFConfig({ ...base, model: typeof model === 'string' ? model.trim() : undefined });
     config2 = resolveHFConfig({ ...base, model: model2.trim() });
+
+    if (config1.model === config2.model) {
+      return res.status(400).json({ error: 'model2 must be different from the primary model' });
+    }
   } catch (error) {
     return res.status(400).json({ error: error.message });
   }
@@ -431,6 +435,13 @@ export async function compareChat(req, res) {
   const history = fullHistory.slice(0, -1);
 
   const sessionSystemPrompt = sessionStore.getSystemPrompt(sessionId) || (typeof systemPrompt === 'string' ? systemPrompt.trim() : '');
+
+  if (typeof systemPrompt === 'string' && systemPrompt.trim()) {
+    const existing = sessionStore.getSystemPrompt(sessionId);
+    if (!existing) {
+      sessionStore.setSystemPrompt(sessionId, systemPrompt.trim());
+    }
+  }
 
   initSSE(res);
   sendStatus(res, 'Comparing models…');
@@ -442,24 +453,40 @@ export async function compareChat(req, res) {
     }
   };
 
-  const responses = { model1: '', model2: '' };
+  const responses = { model1: '', model2: '', error1: null, error2: null };
+
+  let contextInfo1 = null;
+  let contextInfo2 = null;
+  try {
+    contextInfo1 = await prepareConversationContext(sessionId, fullHistory, config1, sessionSystemPrompt || undefined);
+    contextInfo2 = await prepareConversationContext(sessionId, fullHistory, config2, sessionSystemPrompt || undefined);
+  } catch (error) {
+    console.warn('[compareChat] Context preparation failed:', error.message);
+  }
 
   try {
-    await Promise.all([
+    const results = await Promise.allSettled([
       chat(history, trimmed, config1, [], {
         onToken: (t) => { responses.model1 += t; sendModelToken(config1.model, t); },
-      }).then((r) => { responses.model1 = r.text || responses.model1; }),
+      }, contextInfo1?.messages).then((r) => { responses.model1 = r.text || responses.model1; }),
       chat(history, trimmed, config2, [], {
         onToken: (t) => { responses.model2 += t; sendModelToken(config2.model, t); },
-      }).then((r) => { responses.model2 = r.text || responses.model2; }),
+      }, contextInfo2?.messages).then((r) => { responses.model2 = r.text || responses.model2; }),
     ]);
+
+    if (results[0].status === 'rejected') {
+      responses.error1 = results[0].reason?.message || 'Model 1 failed';
+    }
+    if (results[1].status === 'rejected') {
+      responses.error2 = results[1].reason?.message || 'Model 2 failed';
+    }
 
     if (!res.writableEnded) {
       res.write(`data: ${JSON.stringify({
         compare: true,
         responses: [
-          { model: config1.model, content: responses.model1 },
-          { model: config2.model, content: responses.model2 },
+          { model: config1.model, content: responses.model1, error: responses.error1 },
+          { model: config2.model, content: responses.model2, error: responses.error2 },
         ],
       })}\n\n`);
     }

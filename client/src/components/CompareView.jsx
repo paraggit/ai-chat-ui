@@ -2,7 +2,7 @@ import MarkdownContent from './MarkdownContent.jsx';
 
 /**
  * @param {{
- *   responses: Array<{ model: string, content: string }>,
+ *   responses: Array<{ model: string, content: string, error?: string }>,
  *   onKeep: (index: number) => void,
  *   isDark: boolean,
  *   streaming: boolean,
@@ -20,7 +20,7 @@ export default function CompareView({ responses, onKeep, isDark, streaming }) {
             <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300">
               {r.model}
             </span>
-            {!streaming && (
+            {!streaming && !r.error && r.content && (
               <button
                 type="button"
                 onClick={() => onKeep(i)}
@@ -30,7 +30,11 @@ export default function CompareView({ responses, onKeep, isDark, streaming }) {
               </button>
             )}
           </div>
-          {r.content ? (
+          {r.error ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 dark:border-red-800 dark:bg-red-950 dark:text-red-300">
+              <strong>Error:</strong> {r.error}
+            </div>
+          ) : r.content ? (
             <MarkdownContent content={r.content} isDark={isDark} />
           ) : (
             <p className="text-sm text-gray-400 italic">Generating…</p>
