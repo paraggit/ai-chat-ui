@@ -306,8 +306,6 @@ export function useChat(modelSettings, systemPrompt, onSystemPromptLoad) {
 
   const deleteSession = useCallback(
     async (targetId) => {
-      if (isLoading) return;
-
       try {
         await fetch(apiUrl('/api/chat'), {
           method: 'DELETE',
@@ -327,7 +325,7 @@ export function useChat(modelSettings, systemPrompt, onSystemPromptLoad) {
 
       await loadSessionList();
     },
-    [sessionId, isLoading, loadSessionList]
+    [sessionId, loadSessionList]
   );
 
   const stopGeneration = useCallback(() => {
