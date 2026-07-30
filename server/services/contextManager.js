@@ -4,8 +4,9 @@ import { summarizeMessages } from './memoryService.js';
 import { estimateMessagesTokens, truncateToTokenBudget } from './tokenCounter.js';
 
 const DEFAULT_MAX_RECENT = 16;
-const DEFAULT_MAX_CONTEXT_TOKENS = 8192;
-const DEFAULT_SUMMARIZE_THRESHOLD = 20;
+const DEFAULT_MAX_CONTEXT_TOKENS_HF = 16384;
+const DEFAULT_MAX_CONTEXT_TOKENS_LOCAL = 32768;
+const DEFAULT_SUMMARIZE_THRESHOLD = 8;
 const TRIM_TARGET_RATIO = 0.85;
 
 /**
@@ -15,7 +16,9 @@ const TRIM_TARGET_RATIO = 0.85;
  */
 export async function prepareConversationContext(sessionId, history, config) {
   const maxRecent = Number(process.env.CONTEXT_MAX_RECENT_MESSAGES) || DEFAULT_MAX_RECENT;
-  const maxContextTokens = Number(process.env.CONTEXT_MAX_TOKENS) || DEFAULT_MAX_CONTEXT_TOKENS;
+  const isLocal = config.provider === 'local';
+  const defaultBudget = isLocal ? DEFAULT_MAX_CONTEXT_TOKENS_LOCAL : DEFAULT_MAX_CONTEXT_TOKENS_HF;
+  const maxContextTokens = Number(process.env.CONTEXT_MAX_TOKENS) || defaultBudget;
   const summarizeThreshold =
     Number(process.env.CONTEXT_SUMMARIZE_THRESHOLD) || DEFAULT_SUMMARIZE_THRESHOLD;
 
@@ -43,7 +46,10 @@ export async function prepareConversationContext(sessionId, history, config) {
     }
   }
 
-  let recentHistory = history.slice(-maxRecent);
+  const firstUserMsg = history.find((m) => m.role === 'user');
+  const tail = history.slice(-maxRecent);
+  const hasFirst = firstUserMsg && tail.includes(firstUserMsg);
+  let recentHistory = hasFirst || !firstUserMsg ? tail : [firstUserMsg, ...tail];
   let memoryForPrompt = {
     conversationSummary: memory.conversationSummary,
     longTermMemory: memory.longTermMemory,
@@ -54,7 +60,12 @@ export async function prepareConversationContext(sessionId, history, config) {
   let trimmedMessages = 0;
 
   while (tokenEstimate > maxContextTokens * TRIM_TARGET_RATIO && recentHistory.length > 2) {
-    recentHistory = recentHistory.slice(1);
+    // Keep element 0 if it's the pinned first user message
+    if (recentHistory[0] === firstUserMsg && recentHistory.length > 3) {
+      recentHistory = [recentHistory[0], ...recentHistory.slice(2)];
+    } else {
+      recentHistory = recentHistory.slice(1);
+    }
     trimmedMessages += 1;
     messages = buildModelMessages(recentHistory, memoryForPrompt);
     tokenEstimate = estimateMessagesTokens(messages);

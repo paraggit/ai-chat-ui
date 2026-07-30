@@ -72,10 +72,24 @@ export async function summarizeMessages(sessionId, messagesToSummarize, config, 
 
   console.log(`[memoryService] Summarizing ${messagesToSummarize.length} messages for session ${sessionId}`);
 
-  const result = await completeMessages(summaryMessages, config, {
-    maxTokens: SUMMARY_MAX_TOKENS,
-    label: 'Memory summarizer',
-  });
+  let result;
+  try {
+    result = await completeMessages(summaryMessages, config, {
+      maxTokens: SUMMARY_MAX_TOKENS,
+      label: 'Memory summarizer',
+    });
+  } catch (firstError) {
+    console.warn(`[memoryService] Summarization failed, retrying: ${firstError.message}`);
+    try {
+      result = await completeMessages(summaryMessages, config, {
+        maxTokens: SUMMARY_MAX_TOKENS,
+        label: 'Memory summarizer (retry)',
+      });
+    } catch (retryError) {
+      console.error(`[memoryService] Summarization retry also failed: ${retryError.message}`);
+      return;
+    }
+  }
 
   const { summary, facts } = parseSummaryResponse(result.content);
   const safeSummary = sanitizeMemoryText(summary);
