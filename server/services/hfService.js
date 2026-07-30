@@ -32,6 +32,9 @@ const RETRY_DELAY_MS = 1000;
  * @property {string} provider
  * @property {number} timeoutMs
  * @property {number} maxTokens
+ * @property {number} [temperature]
+ * @property {number} [topP]
+ * @property {number} [frequencyPenalty]
  */
 
 /**
@@ -43,6 +46,9 @@ const RETRY_DELAY_MS = 1000;
  * @property {string} [imageGenModel]
  * @property {string} [provider]
  * @property {number} [maxTokens]
+ * @property {number} [temperature]
+ * @property {number} [topP]
+ * @property {number} [frequencyPenalty]
  */
 
 /**
@@ -119,6 +125,12 @@ export function resolveHFConfig(overrides = {}) {
           Math.max(baseTimeout, CUSTOM_ENDPOINT_TIMEOUT_MS)
         : baseTimeout;
   const maxTokens = resolveMaxTokens(overrides.maxTokens);
+  const resolvedTemperature = Number.isFinite(Number(overrides.temperature))
+    ? Number(overrides.temperature) : undefined;
+  const resolvedTopP = Number.isFinite(Number(overrides.topP))
+    ? Number(overrides.topP) : undefined;
+  const resolvedFrequencyPenalty = Number.isFinite(Number(overrides.frequencyPenalty))
+    ? Number(overrides.frequencyPenalty) : undefined;
 
   if (provider !== PROVIDER_LOCAL && !token) {
     throw new Error('API key is required. Set it in the UI settings or HF_TOKEN env variable.');
@@ -137,6 +149,9 @@ export function resolveHFConfig(overrides = {}) {
     provider,
     timeoutMs,
     maxTokens,
+    temperature: resolvedTemperature,
+    topP: resolvedTopP,
+    frequencyPenalty: resolvedFrequencyPenalty,
   };
 }
 
@@ -151,9 +166,15 @@ function buildChatRequestBody(config, messages, overrides = {}) {
     model: config.model,
     messages,
     max_tokens: config.maxTokens,
-    temperature: overrides.temperature ?? 0.5,
+    temperature: overrides.temperature ?? config.temperature ?? 0.5,
+    top_p: config.topP,
+    frequency_penalty: config.frequencyPenalty,
     stream: overrides.stream ?? false,
   };
+  // Only include if defined (some APIs reject null/undefined values)
+  if (body.top_p === undefined) delete body.top_p;
+  if (body.frequency_penalty === undefined || body.frequency_penalty === 0) delete body.frequency_penalty;
+
   if (isLocalProvider(config.provider)) {
     body.options = { num_predict: config.maxTokens };
     if (process.env.OLLAMA_THINK !== 'true') {
@@ -285,18 +306,24 @@ async function generateViaLocalLlm(history, newMessage, config) {
 
       console.log(`[hfService] Local LLM → ${url} (model: ${config.model})`);
 
+      const requestBody = {
+        model: config.model,
+        messages,
+        max_tokens: config.maxTokens,
+        temperature: config.temperature ?? 0.7,
+        stream: false,
+      };
+      if (config.topP !== undefined) requestBody.top_p = config.topP;
+      if (config.frequencyPenalty !== undefined && config.frequencyPenalty !== 0) {
+        requestBody.frequency_penalty = config.frequencyPenalty;
+      }
+
       const response = await fetchWithTimeout(
         url,
         {
           method: 'POST',
           headers,
-          body: JSON.stringify({
-            model: config.model,
-            messages,
-            max_tokens: config.maxTokens,
-            temperature: 0.7,
-            stream: false,
-          }),
+          body: JSON.stringify(requestBody),
         },
         config.timeoutMs
       );
@@ -332,6 +359,18 @@ async function generateViaRouter(history, newMessage, config) {
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
+      const requestBody = {
+        model: config.model,
+        messages,
+        max_tokens: config.maxTokens,
+        temperature: config.temperature ?? 0.7,
+        stream: false,
+      };
+      if (config.topP !== undefined) requestBody.top_p = config.topP;
+      if (config.frequencyPenalty !== undefined && config.frequencyPenalty !== 0) {
+        requestBody.frequency_penalty = config.frequencyPenalty;
+      }
+
       const response = await fetchWithTimeout(
         url,
         {
@@ -340,13 +379,7 @@ async function generateViaRouter(history, newMessage, config) {
             Authorization: `Bearer ${config.token}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({
-            model: config.model,
-            messages,
-            max_tokens: config.maxTokens,
-            temperature: 0.7,
-            stream: false,
-          }),
+          body: JSON.stringify(requestBody),
         },
         config.timeoutMs
       );
@@ -384,9 +417,13 @@ export async function completeMessages(messages, config, options = {}) {
     model: config.model,
     messages,
     max_tokens: maxTokens,
-    temperature: 0.3,
+    temperature: config.temperature ?? 0.3,
     stream: false,
   };
+  if (config.topP !== undefined) body.top_p = config.topP;
+  if (config.frequencyPenalty !== undefined && config.frequencyPenalty !== 0) {
+    body.frequency_penalty = config.frequencyPenalty;
+  }
 
   if (isLocalProvider(config.provider)) {
     /** @type {Record<string, string>} */
@@ -471,13 +508,18 @@ async function generateViaCustomEndpoint(history, newMessage, config) {
     {
       name: 'OpenAI /v1/chat/completions',
       url: `${base}/v1/chat/completions`,
-      body: {
-        model: config.model,
-        messages,
-        max_tokens: config.maxTokens,
-        temperature: 0.7,
-        stream: false,
-      },
+      body: (() => {
+        const b = {
+          model: config.model,
+          messages,
+          max_tokens: config.maxTokens,
+          temperature: config.temperature ?? 0.7,
+          stream: false,
+        };
+        if (config.topP !== undefined) b.top_p = config.topP;
+        if (config.frequencyPenalty !== undefined && config.frequencyPenalty !== 0) b.frequency_penalty = config.frequencyPenalty;
+        return b;
+      })(),
     },
     {
       name: 'TGI root (inputs prompt)',
@@ -486,7 +528,7 @@ async function generateViaCustomEndpoint(history, newMessage, config) {
         inputs: prompt,
         parameters: {
           max_new_tokens: config.maxTokens,
-          temperature: 0.7,
+          temperature: config.temperature ?? 0.7,
           return_full_text: false,
         },
       },
@@ -498,7 +540,7 @@ async function generateViaCustomEndpoint(history, newMessage, config) {
         inputs: prompt,
         parameters: {
           max_new_tokens: config.maxTokens,
-          temperature: 0.7,
+          temperature: config.temperature ?? 0.7,
           return_full_text: false,
         },
       },
@@ -506,13 +548,18 @@ async function generateViaCustomEndpoint(history, newMessage, config) {
     {
       name: 'OpenAI root /chat/completions',
       url: buildChatCompletionsUrl(base),
-      body: {
-        model: config.model,
-        messages,
-        max_tokens: config.maxTokens,
-        temperature: 0.7,
-        stream: false,
-      },
+      body: (() => {
+        const b = {
+          model: config.model,
+          messages,
+          max_tokens: config.maxTokens,
+          temperature: config.temperature ?? 0.7,
+          stream: false,
+        };
+        if (config.topP !== undefined) b.top_p = config.topP;
+        if (config.frequencyPenalty !== undefined && config.frequencyPenalty !== 0) b.frequency_penalty = config.frequencyPenalty;
+        return b;
+      })(),
     },
   ];
 

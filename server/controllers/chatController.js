@@ -23,6 +23,9 @@ export async function streamChat(req, res) {
     imageGenModel,
     maxTokens,
     systemPrompt,
+    temperature,
+    topP,
+    frequencyPenalty,
   } = req.body ?? {};
 
   const sanitizedImages = sanitizeImages(images);
@@ -49,6 +52,9 @@ export async function streamChat(req, res) {
         maxTokens !== undefined && maxTokens !== null && maxTokens !== ''
           ? Number(maxTokens)
           : undefined,
+      temperature: typeof temperature === 'number' ? temperature : undefined,
+      topP: typeof topP === 'number' ? topP : undefined,
+      frequencyPenalty: typeof frequencyPenalty === 'number' ? frequencyPenalty : undefined,
     });
   } catch (error) {
     return res.status(400).json({ error: error.message });
