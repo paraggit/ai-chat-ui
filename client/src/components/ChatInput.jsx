@@ -12,6 +12,11 @@ import { MAX_ATTACHMENTS, processImageFiles } from '../utils/images.js';
  *   disabled: boolean,
  *   configured: boolean,
  *   localMode?: boolean,
+ *   compareMode?: boolean,
+ *   onToggleCompare?: () => void,
+ *   compareModel?: string,
+ *   onCompareModelChange?: (value: string) => void,
+ *   onCompare?: (text: string, model2: string) => void,
  * }} props
  */
 export default function ChatInput({
@@ -23,6 +28,11 @@ export default function ChatInput({
   disabled,
   configured,
   localMode = false,
+  compareMode = false,
+  onToggleCompare,
+  compareModel = '',
+  onCompareModelChange,
+  onCompare,
 }) {
   const inputRef = useRef(null);
   const fileRef = useRef(null);
@@ -36,7 +46,11 @@ export default function ChatInput({
     const text = inputRef.current?.value ?? '';
     if (!text.trim() && attachments.length === 0) return;
 
-    onSend(text, attachments);
+    if (compareMode && onCompare) {
+      onCompare(text, compareModel);
+    } else {
+      onSend(text, attachments);
+    }
     if (inputRef.current) inputRef.current.value = '';
     setAttachments([]);
     setUploadError(null);
@@ -130,6 +144,21 @@ export default function ChatInput({
         </div>
       )}
 
+      {compareMode && (
+        <div className="mx-auto mb-2 max-w-3xl">
+          <label className="mb-1 block text-xs font-medium text-gray-500 dark:text-gray-400">
+            Compare with model:
+          </label>
+          <input
+            type="text"
+            value={compareModel}
+            onChange={(e) => onCompareModelChange?.(e.target.value)}
+            placeholder="Enter second model name (e.g. meta-llama/Llama-3-8B-Instruct)"
+            className="w-full rounded-lg border border-gray-200 bg-surface-secondary px-3 py-2 text-xs font-mono outline-none focus:border-accent dark:border-gray-700 dark:bg-surface-dark-secondary"
+          />
+        </div>
+      )}
+
       <form
         onSubmit={handleSubmit}
         className="mx-auto flex max-w-3xl items-end gap-2 rounded-2xl border border-gray-200 bg-surface-secondary px-3 py-3 shadow-sm dark:border-gray-700 dark:bg-surface-dark-secondary sm:gap-3 sm:px-4"
@@ -169,6 +198,25 @@ export default function ChatInput({
           onKeyDown={handleKeyDown}
           className="max-h-40 flex-1 resize-none bg-transparent text-sm outline-none placeholder:text-gray-400 disabled:opacity-50 dark:placeholder:text-gray-500"
         />
+
+        {onToggleCompare && (
+          <button
+            type="button"
+            onClick={onToggleCompare}
+            disabled={disabled || !configured}
+            className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition ${
+              compareMode
+                ? 'bg-accent text-white'
+                : 'text-gray-500 hover:bg-white dark:hover:bg-surface-dark'
+            } disabled:cursor-not-allowed disabled:opacity-40`}
+            aria-label="Compare models"
+            title="Compare two models side-by-side"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7" />
+            </svg>
+          </button>
+        )}
 
         {isGenerating ? (
           <button

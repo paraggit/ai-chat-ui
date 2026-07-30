@@ -1,4 +1,6 @@
 const SETTINGS_KEY = 'hf-chat-pro-model-settings';
+const SYSTEM_PROMPT_KEY = 'hf-chat-pro-system-prompt';
+const DEFAULT_SYSTEM_PROMPT = 'You are a helpful AI assistant.';
 
 export const DEFAULT_MAX_TOKENS = 8192;
 /** @deprecated legacy default — migrated on load */
@@ -22,6 +24,9 @@ const DEFAULTS = {
   visionModel: 'Salesforce/blip-vqa-base',
   imageGenModel: 'stabilityai/stable-diffusion-2-1',
   maxTokens: DEFAULT_MAX_TOKENS,
+  temperature: 0.7,
+  topP: 1.0,
+  frequencyPenalty: 0,
 };
 
 /**
@@ -33,6 +38,9 @@ const DEFAULTS = {
  *   visionModel: string,
  *   imageGenModel: string,
  *   maxTokens: number,
+ *   temperature: number,
+ *   topP: number,
+ *   frequencyPenalty: number,
  * }}
  */
 export function loadModelSettings() {
@@ -47,6 +55,10 @@ export function loadModelSettings() {
     const maxTokens = Number(parsed.maxTokens);
     const provider =
       parsed.provider === PROVIDERS.LOCAL ? PROVIDERS.LOCAL : PROVIDERS.HUGGINGFACE;
+    const temperature = Number(parsed.temperature);
+    const topP = Number(parsed.topP);
+    const frequencyPenalty = Number(parsed.frequencyPenalty);
+
     return {
       provider,
       apiKey: parsed.apiKey ?? DEFAULTS.apiKey,
@@ -60,6 +72,12 @@ export function loadModelSettings() {
             ? DEFAULT_MAX_TOKENS
             : maxTokens
           : DEFAULTS.maxTokens,
+      temperature: Number.isFinite(temperature) && temperature >= 0 && temperature <= 2
+        ? temperature : DEFAULTS.temperature,
+      topP: Number.isFinite(topP) && topP >= 0 && topP <= 1
+        ? topP : DEFAULTS.topP,
+      frequencyPenalty: Number.isFinite(frequencyPenalty) && frequencyPenalty >= 0 && frequencyPenalty <= 2
+        ? frequencyPenalty : DEFAULTS.frequencyPenalty,
     };
   } catch {
     return { ...DEFAULTS };
@@ -110,5 +128,18 @@ export function toApiPayload(settings) {
     imageGenModel: settings.imageGenModel.trim() || undefined,
     maxTokens:
       Number.isFinite(maxTokens) && maxTokens > 0 ? Math.floor(maxTokens) : DEFAULT_MAX_TOKENS,
+    temperature: Number.isFinite(settings.temperature) ? settings.temperature : undefined,
+    topP: Number.isFinite(settings.topP) ? settings.topP : undefined,
+    frequencyPenalty: Number.isFinite(settings.frequencyPenalty) ? settings.frequencyPenalty : undefined,
   };
 }
+
+export function loadLastSystemPrompt() {
+  return localStorage.getItem(SYSTEM_PROMPT_KEY) || DEFAULT_SYSTEM_PROMPT;
+}
+
+export function saveLastSystemPrompt(prompt) {
+  localStorage.setItem(SYSTEM_PROMPT_KEY, prompt);
+}
+
+export { DEFAULT_SYSTEM_PROMPT };

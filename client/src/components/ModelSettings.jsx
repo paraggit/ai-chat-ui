@@ -15,6 +15,9 @@ import {
  *     visionModel: string,
  *     imageGenModel: string,
  *     maxTokens: number,
+ *     temperature: number,
+ *     topP: number,
+ *     frequencyPenalty: number,
  *   },
  *   configured: boolean,
  *   onSave: (settings: {
@@ -25,6 +28,9 @@ import {
  *     visionModel: string,
  *     imageGenModel: string,
  *     maxTokens: number,
+ *     temperature: number,
+ *     topP: number,
+ *     frequencyPenalty: number,
  *   }) => void,
  * }} props
  */
@@ -81,6 +87,9 @@ export default function ModelSettings({ settings, configured, onSave }) {
         Number.isFinite(Number(draft.maxTokens)) && Number(draft.maxTokens) > 0
           ? Math.floor(Number(draft.maxTokens))
           : DEFAULT_MAX_TOKENS,
+      temperature: Number.isFinite(Number(draft.temperature)) ? Number(draft.temperature) : 0.7,
+      topP: Number.isFinite(Number(draft.topP)) ? Number(draft.topP) : 1.0,
+      frequencyPenalty: Number.isFinite(Number(draft.frequencyPenalty)) ? Number(draft.frequencyPenalty) : 0,
     });
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -246,6 +255,66 @@ export default function ModelSettings({ settings, configured, onSave }) {
             <p className="mt-1 text-[10px] leading-snug text-gray-400">
               Max length of each reply (output tokens). Default {DEFAULT_MAX_TOKENS}. Reasoning /
               local models often need 8192–16384+. Save after changing.
+            </p>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">
+              Temperature: {draft.temperature}
+            </label>
+            <input
+              type="range"
+              min={0}
+              max={2}
+              step={0.1}
+              value={draft.temperature}
+              onChange={(e) =>
+                setDraft((prev) => ({ ...prev, temperature: Number(e.target.value) }))
+              }
+              className="w-full accent-accent"
+            />
+            <p className="mt-1 text-[10px] leading-snug text-gray-400">
+              Higher = more creative, lower = more focused. Default 0.7.
+            </p>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">
+              Top-p: {draft.topP}
+            </label>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.05}
+              value={draft.topP}
+              onChange={(e) =>
+                setDraft((prev) => ({ ...prev, topP: Number(e.target.value) }))
+              }
+              className="w-full accent-accent"
+            />
+            <p className="mt-1 text-[10px] leading-snug text-gray-400">
+              Nucleus sampling. Lower values focus on more likely tokens. Default 1.0.
+            </p>
+          </div>
+
+          <div>
+            <label className="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-300">
+              Frequency penalty: {draft.frequencyPenalty}
+            </label>
+            <input
+              type="range"
+              min={0}
+              max={2}
+              step={0.1}
+              value={draft.frequencyPenalty}
+              onChange={(e) =>
+                setDraft((prev) => ({ ...prev, frequencyPenalty: Number(e.target.value) }))
+              }
+              className="w-full accent-accent"
+            />
+            <p className="mt-1 text-[10px] leading-snug text-gray-400">
+              Penalizes repeated tokens. Higher = less repetition. Default 0.
             </p>
           </div>
 

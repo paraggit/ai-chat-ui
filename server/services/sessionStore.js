@@ -28,6 +28,7 @@ const DATA_DIR =
  *   conversationSummary: string,
  *   longTermMemory: string[],
  *   lastSummarizedIndex: number,
+ *   systemPrompt: string,
  * }} SessionData
  */
 
@@ -41,6 +42,16 @@ const DATA_DIR =
  * }} SessionSummary
  */
 
+/**
+ * Validate sessionId to prevent path traversal attacks.
+ * @param {string} id
+ */
+function validateSessionId(id) {
+  if (!id || typeof id !== 'string' || !/^[a-zA-Z0-9_-]+$/.test(id)) {
+    throw new Error('Invalid session ID');
+  }
+}
+
 class PersistentSessionStore {
   constructor() {
     /** @type {Map<string, SessionData>} */
@@ -49,6 +60,7 @@ class PersistentSessionStore {
   }
 
   _sessionPath(sessionId) {
+    validateSessionId(sessionId);
     return path.join(DATA_DIR, `${sessionId}.json`);
   }
 
@@ -89,6 +101,7 @@ class PersistentSessionStore {
       conversationSummary: sanitizeMemoryText(data.conversationSummary || ''),
       longTermMemory: sanitizeMemoryFacts(data.longTermMemory || []),
       lastSummarizedIndex: Number.isFinite(data.lastSummarizedIndex) ? data.lastSummarizedIndex : 0,
+      systemPrompt: typeof data.systemPrompt === 'string' ? data.systemPrompt : '',
     };
   }
 
@@ -108,6 +121,7 @@ class PersistentSessionStore {
         conversationSummary: '',
         longTermMemory: [],
         lastSummarizedIndex: 0,
+        systemPrompt: '',
       });
     }
     return /** @type {SessionData} */ (this.sessions.get(sessionId));
@@ -170,6 +184,22 @@ class PersistentSessionStore {
   }
 
   /**
+   * Truncate message history at the given index (keeps messages 0..index-1).
+   * Resets summarization state since the truncated messages may have been summarized.
+   * @param {string} sessionId
+   * @param {number} index
+   */
+  truncateAt(sessionId, index) {
+    const session = this._ensure(sessionId);
+    if (index < 0 || index >= session.messages.length) return;
+    session.messages = session.messages.slice(0, index);
+    session.conversationSummary = '';
+    session.longTermMemory = [];
+    session.lastSummarizedIndex = 0;
+    this._persist(sessionId);
+  }
+
+  /**
    * @param {string} sessionId
    * @param {SessionMessage} message
    */
@@ -215,6 +245,23 @@ class PersistentSessionStore {
 
   /**
    * @param {string} sessionId
+   * @param {string} prompt
+   */
+  setSystemPrompt(sessionId, prompt) {
+    this._ensure(sessionId).systemPrompt = prompt;
+    this._persist(sessionId);
+  }
+
+  /**
+   * @param {string} sessionId
+   * @returns {string}
+   */
+  getSystemPrompt(sessionId) {
+    return this._ensure(sessionId).systemPrompt;
+  }
+
+  /**
+   * @param {string} sessionId
    * @param {string[]} facts
    */
   mergeLongTermMemory(sessionId, facts) {
@@ -248,6 +295,29 @@ class PersistentSessionStore {
    */
   hasSession(sessionId) {
     return this.sessions.has(sessionId);
+  }
+
+  /**
+   * Import a session from external data. Assigns a new ID.
+   * @param {{ title?: string, history?: SessionMessage[], systemPrompt?: string }} data
+   * @returns {string} the new sessionId
+   */
+  importSession(data) {
+    const sessionId = globalThis.crypto?.randomUUID?.() || `imported-${Date.now()}`;
+    const now = new Date().toISOString();
+    this.sessions.set(sessionId, {
+      id: sessionId,
+      title: data.title || 'Imported chat',
+      createdAt: now,
+      updatedAt: now,
+      messages: Array.isArray(data.history) ? data.history : [],
+      conversationSummary: '',
+      longTermMemory: [],
+      lastSummarizedIndex: 0,
+      systemPrompt: typeof data.systemPrompt === 'string' ? data.systemPrompt : '',
+    });
+    this._persist(sessionId);
+    return sessionId;
   }
 }
 

@@ -4,11 +4,21 @@ import MessageList from './components/MessageList.jsx';
 import ChatInput from './components/ChatInput.jsx';
 import { useChat } from './hooks/useChat.js';
 import { useModelSettings } from './hooks/useModelSettings.js';
-import { isLocalProvider } from './utils/modelSettings.js';
+import { isLocalProvider, loadLastSystemPrompt, saveLastSystemPrompt } from './utils/modelSettings.js';
 import { getInitialDarkMode, setDarkMode } from './utils/theme.js';
+import { importSessionFromFile } from './utils/export.js';
 
 export default function App() {
   const { settings, configured, updateSettings } = useModelSettings();
+  const [systemPrompt, setSystemPromptState] = useState(loadLastSystemPrompt);
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareModel, setCompareModel] = useState('');
+
+  const handleSystemPromptChange = (prompt) => {
+    setSystemPromptState(prompt);
+    saveLastSystemPrompt(prompt);
+  };
+
   const {
     messages,
     sessions,
@@ -21,8 +31,21 @@ export default function App() {
     newChat,
     selectSession,
     deleteSession,
-  } = useChat(settings);
+    editMessage,
+    regenerateLastResponse,
+    sendCompare,
+    keepCompareResponse,
+  } = useChat(settings, systemPrompt, (prompt) => {
+    setSystemPromptState(prompt);
+    saveLastSystemPrompt(prompt);
+  });
   const [isDark, setIsDark] = useState(getInitialDarkMode);
+
+  const handleImport = async (file) => {
+    const newId = await importSessionFromFile(file);
+    selectSession(newId);
+    return newId;
+  };
 
   const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant');
   const canCopyLast = Boolean(lastAssistant?.content?.trim() || lastAssistant?.metadata?.reasoning);
@@ -43,10 +66,13 @@ export default function App() {
         sessions={sessions}
         onSelectSession={selectSession}
         onDeleteSession={deleteSession}
+        onImport={handleImport}
         chatBusy={isLoading}
         settings={settings}
         configured={configured}
         onSaveSettings={updateSettings}
+        systemPrompt={systemPrompt}
+        onSystemPromptChange={handleSystemPromptChange}
       />
 
       <main className="flex min-w-0 flex-1 flex-col bg-surface-secondary dark:bg-surface-dark-secondary">
@@ -56,7 +82,14 @@ export default function App() {
           </div>
         )}
 
-        <MessageList messages={messages} isDark={isDark} />
+        <MessageList
+          messages={messages}
+          isDark={isDark}
+          isLoading={isLoading}
+          onEdit={editMessage}
+          onRegenerate={regenerateLastResponse}
+          onKeepCompare={keepCompareResponse}
+        />
         <ChatInput
           onSend={sendMessage}
           onStop={stopGeneration}
@@ -66,6 +99,11 @@ export default function App() {
           disabled={isLoading}
           configured={configured}
           localMode={isLocalProvider(settings)}
+          compareMode={compareMode}
+          onToggleCompare={() => setCompareMode((p) => !p)}
+          compareModel={compareModel}
+          onCompareModelChange={setCompareModel}
+          onCompare={sendCompare}
         />
       </main>
     </div>

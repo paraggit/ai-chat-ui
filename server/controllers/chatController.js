@@ -22,6 +22,10 @@ export async function streamChat(req, res) {
     visionModel,
     imageGenModel,
     maxTokens,
+    systemPrompt,
+    temperature,
+    topP,
+    frequencyPenalty,
   } = req.body ?? {};
 
   const sanitizedImages = sanitizeImages(images);
@@ -48,6 +52,9 @@ export async function streamChat(req, res) {
         maxTokens !== undefined && maxTokens !== null && maxTokens !== ''
           ? Number(maxTokens)
           : undefined,
+      temperature: typeof temperature === 'number' ? temperature : undefined,
+      topP: typeof topP === 'number' ? topP : undefined,
+      frequencyPenalty: typeof frequencyPenalty === 'number' ? frequencyPenalty : undefined,
     });
   } catch (error) {
     return res.status(400).json({ error: error.message });
@@ -61,6 +68,13 @@ export async function streamChat(req, res) {
     images: sanitizedImages.length > 0 ? sanitizedImages : undefined,
   });
 
+  if (typeof systemPrompt === 'string' && systemPrompt.trim()) {
+    const existing = sessionStore.getSystemPrompt(sessionId);
+    if (!existing) {
+      sessionStore.setSystemPrompt(sessionId, systemPrompt.trim());
+    }
+  }
+
   const fullHistory = sessionStore.getHistory(sessionId);
   const useContextMemory =
     sanitizedImages.length === 0 && !wantsImageGeneration(trimmedMessage);
@@ -68,11 +82,13 @@ export async function streamChat(req, res) {
   initSSE(res);
   sendStatus(res, useContextMemory ? 'Preparing context…' : 'Connecting…');
 
+  const sessionSystemPrompt = sessionStore.getSystemPrompt(sessionId) || (typeof systemPrompt === 'string' ? systemPrompt.trim() : '');
+
   /** @type {Awaited<ReturnType<typeof prepareConversationContext>> | null} */
   let contextInfo = null;
   if (useContextMemory) {
     try {
-      contextInfo = await prepareConversationContext(sessionId, fullHistory, hfConfig);
+      contextInfo = await prepareConversationContext(sessionId, fullHistory, hfConfig, sessionSystemPrompt || undefined);
       if (contextInfo.summarized) {
         sendStatus(res, 'Conversation memory updated…');
       }
@@ -238,6 +254,7 @@ export function getHistory(req, res) {
 
   const history = sessionStore.getHistory(sessionId);
   const memory = sessionStore.getMemory(sessionId);
+  const systemPrompt = sessionStore.getSystemPrompt(sessionId);
   const sessions = sessionStore.listSessions();
   const meta = sessions.find((s) => s.id === sessionId);
 
@@ -246,6 +263,7 @@ export function getHistory(req, res) {
     title: meta?.title ?? 'New chat',
     history,
     memory,
+    systemPrompt,
   });
 }
 
@@ -288,4 +306,210 @@ export function healthCheck(_req, res) {
     imageGenModel: process.env.HF_IMAGE_GEN_MODEL || 'stabilityai/stable-diffusion-2-1',
     timestamp: new Date().toISOString(),
   });
+}
+
+/**
+ * Edit a user message and regenerate from that point.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ */
+export async function editMessage(req, res) {
+  const { sessionId, messageIndex, newContent } = req.body ?? {};
+
+  if (!sessionId || typeof sessionId !== 'string') {
+    return res.status(400).json({ error: 'sessionId is required' });
+  }
+  if (typeof messageIndex !== 'number' || messageIndex < 0) {
+    return res.status(400).json({ error: 'messageIndex is required' });
+  }
+  const trimmed = typeof newContent === 'string' ? newContent.trim() : '';
+  if (!trimmed) {
+    return res.status(400).json({ error: 'newContent is required' });
+  }
+
+  const history = sessionStore.getHistory(sessionId);
+  if (messageIndex >= history.length) {
+    return res.status(400).json({ error: 'messageIndex out of range' });
+  }
+
+  sessionStore.truncateAt(sessionId, messageIndex);
+
+  req.body = { ...req.body, message: trimmed };
+  return streamChat(req, res);
+}
+
+/**
+ * Regenerate the last assistant response.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ */
+export async function regenerateLastResponse(req, res) {
+  const { sessionId } = req.body ?? {};
+
+  if (!sessionId || typeof sessionId !== 'string') {
+    return res.status(400).json({ error: 'sessionId is required' });
+  }
+
+  const history = sessionStore.getHistory(sessionId);
+  if (history.length < 2) {
+    return res.status(400).json({ error: 'Not enough history to regenerate' });
+  }
+
+  const lastAssistantIndex = history.length - 1;
+  if (history[lastAssistantIndex]?.role !== 'assistant') {
+    return res.status(400).json({ error: 'Last message is not an assistant response' });
+  }
+
+  const lastUserMsg = history[lastAssistantIndex - 1];
+  if (lastUserMsg?.role !== 'user') {
+    return res.status(400).json({ error: 'Could not find the user message to regenerate from' });
+  }
+
+  sessionStore.truncateAt(sessionId, lastAssistantIndex);
+
+  req.body = { ...req.body, message: lastUserMsg.content || '' };
+  return streamChat(req, res);
+}
+
+/**
+ * Import a conversation from JSON.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ */
+export function importSession(req, res) {
+  const data = req.body;
+  if (!data || typeof data !== 'object') {
+    return res.status(400).json({ error: 'Invalid import data' });
+  }
+
+  try {
+    const sessionId = sessionStore.importSession(data);
+    res.json({ success: true, sessionId });
+  } catch (error) {
+    res.status(400).json({ error: error.message || 'Import failed' });
+  }
+}
+
+/**
+ * Compare responses from two models side-by-side.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ */
+export async function compareChat(req, res) {
+  const {
+    message, sessionId, model2, provider, hfToken, model, endpoint,
+    visionModel, imageGenModel, maxTokens, systemPrompt,
+    temperature, topP, frequencyPenalty,
+  } = req.body ?? {};
+
+  const trimmed = typeof message === 'string' ? message.trim() : '';
+  if (!trimmed) return res.status(400).json({ error: 'message is required' });
+  if (!sessionId) return res.status(400).json({ error: 'sessionId is required' });
+  if (!model2 || typeof model2 !== 'string') return res.status(400).json({ error: 'model2 is required' });
+
+  let config1, config2;
+  try {
+    const base = {
+      provider: typeof provider === 'string' ? provider.trim() : undefined,
+      token: typeof hfToken === 'string' ? hfToken.trim() : undefined,
+      endpoint: typeof endpoint === 'string' ? endpoint.trim() : undefined,
+      visionModel: typeof visionModel === 'string' ? visionModel.trim() : undefined,
+      imageGenModel: typeof imageGenModel === 'string' ? imageGenModel.trim() : undefined,
+      maxTokens: maxTokens !== undefined ? Number(maxTokens) : undefined,
+      temperature: typeof temperature === 'number' ? temperature : undefined,
+      topP: typeof topP === 'number' ? topP : undefined,
+      frequencyPenalty: typeof frequencyPenalty === 'number' ? frequencyPenalty : undefined,
+    };
+    config1 = resolveHFConfig({ ...base, model: typeof model === 'string' ? model.trim() : undefined });
+    config2 = resolveHFConfig({ ...base, model: model2.trim() });
+
+    if (config1.model === config2.model) {
+      return res.status(400).json({ error: 'model2 must be different from the primary model' });
+    }
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+
+  sessionStore.appendMessage(sessionId, { role: 'user', content: trimmed });
+  const fullHistory = sessionStore.getHistory(sessionId);
+  const history = fullHistory.slice(0, -1);
+
+  const sessionSystemPrompt = sessionStore.getSystemPrompt(sessionId) || (typeof systemPrompt === 'string' ? systemPrompt.trim() : '');
+
+  if (typeof systemPrompt === 'string' && systemPrompt.trim()) {
+    const existing = sessionStore.getSystemPrompt(sessionId);
+    if (!existing) {
+      sessionStore.setSystemPrompt(sessionId, systemPrompt.trim());
+    }
+  }
+
+  initSSE(res);
+  sendStatus(res, 'Comparing models…');
+
+  const sendModelToken = (modelLabel, token) => {
+    if (!res.writableEnded) {
+      res.write(`data: ${JSON.stringify({ model: modelLabel, token })}\n\n`);
+      res.flush?.();
+    }
+  };
+
+  const responses = { model1: '', model2: '', error1: null, error2: null };
+
+  let contextInfo1 = null;
+  let contextInfo2 = null;
+  try {
+    contextInfo1 = await prepareConversationContext(sessionId, fullHistory, config1, sessionSystemPrompt || undefined);
+    contextInfo2 = await prepareConversationContext(sessionId, fullHistory, config2, sessionSystemPrompt || undefined);
+  } catch (error) {
+    console.warn('[compareChat] Context preparation failed:', error.message);
+  }
+
+  try {
+    const results = await Promise.allSettled([
+      chat(history, trimmed, config1, [], {
+        onToken: (t) => { responses.model1 += t; sendModelToken(config1.model, t); },
+      }, contextInfo1?.messages).then((r) => { responses.model1 = r.text || responses.model1; }),
+      chat(history, trimmed, config2, [], {
+        onToken: (t) => { responses.model2 += t; sendModelToken(config2.model, t); },
+      }, contextInfo2?.messages).then((r) => { responses.model2 = r.text || responses.model2; }),
+    ]);
+
+    if (results[0].status === 'rejected') {
+      responses.error1 = results[0].reason?.message || 'Model 1 failed';
+    }
+    if (results[1].status === 'rejected') {
+      responses.error2 = results[1].reason?.message || 'Model 2 failed';
+    }
+
+    if (!res.writableEnded) {
+      res.write(`data: ${JSON.stringify({
+        compare: true,
+        responses: [
+          { model: config1.model, content: responses.model1, error: responses.error1 },
+          { model: config2.model, content: responses.model2, error: responses.error2 },
+        ],
+      })}\n\n`);
+    }
+
+    sendDone(res);
+  } catch (error) {
+    if (!res.writableEnded) {
+      sendError(res, error.message);
+      sendDone(res);
+    }
+  }
+}
+
+/**
+ * Store a chosen response from a compare operation.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ */
+export function keepResponse(req, res) {
+  const { sessionId, content } = req.body ?? {};
+  if (!sessionId || typeof content !== 'string') {
+    return res.status(400).json({ error: 'sessionId and content required' });
+  }
+  sessionStore.appendMessage(sessionId, { role: 'assistant', content });
+  res.json({ success: true });
 }

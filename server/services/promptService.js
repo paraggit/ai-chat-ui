@@ -1,6 +1,6 @@
 import { isLowQualityText, sanitizeMemoryFacts, sanitizeMemoryText } from '../utils/textQuality.js';
 
-const SYSTEM_PROMPT = 'You are a helpful AI assistant.';
+const DEFAULT_SYSTEM_PROMPT = 'You are a helpful AI assistant.';
 
 /**
  * @param {{ role: string, content?: string, images?: string[] }} msg
@@ -27,10 +27,11 @@ export function sanitizeMemoryForPrompt(memory = {}) {
 
 /**
  * @param {{ conversationSummary?: string, longTermMemory?: string[] }} [memory]
+ * @param {string} [customSystemPrompt]
  */
-export function buildSystemPrompt(memory = {}) {
+export function buildSystemPrompt(memory = {}, customSystemPrompt) {
   const safeMemory = sanitizeMemoryForPrompt(memory);
-  const parts = [SYSTEM_PROMPT];
+  const parts = [customSystemPrompt || DEFAULT_SYSTEM_PROMPT];
 
   if (safeMemory.longTermMemory.length) {
     parts.push(
@@ -50,10 +51,11 @@ export function buildSystemPrompt(memory = {}) {
  * Build OpenAI-style messages for the model (history should already include the latest user turn).
  * @param {Array<{ role: string, content: string }>} recentHistory
  * @param {{ conversationSummary?: string, longTermMemory?: string[] }} [memory]
+ * @param {string} [customSystemPrompt]
  * @returns {Array<{ role: string, content: string }>}
  */
-export function buildModelMessages(recentHistory, memory = {}) {
-  const messages = [{ role: 'system', content: buildSystemPrompt(memory) }];
+export function buildModelMessages(recentHistory, memory = {}, customSystemPrompt) {
+  const messages = [{ role: 'system', content: buildSystemPrompt(memory, customSystemPrompt) }];
 
   for (const msg of recentHistory) {
     if (!isValidHistoryMessage(msg)) continue;
@@ -71,14 +73,15 @@ export function buildModelMessages(recentHistory, memory = {}) {
  * @param {Array<{ role: string, content: string }>} history
  * @param {string} newMessage
  * @param {{ conversationSummary?: string, longTermMemory?: string[] }} [memory]
+ * @param {string} [customSystemPrompt]
  * @returns {Array<{ role: string, content: string }>}
  */
-export function buildChatMessages(history, newMessage, memory = {}) {
+export function buildChatMessages(history, newMessage, memory = {}, customSystemPrompt) {
   const recent = [...history];
   if (newMessage) {
     recent.push({ role: 'user', content: newMessage });
   }
-  return buildModelMessages(recent, memory);
+  return buildModelMessages(recent, memory, customSystemPrompt);
 }
 
 /**
@@ -93,7 +96,7 @@ export function buildPrompt(history, newMessage) {
     .map((m) => `${capitalizeRole(m.role)}: ${m.content}`)
     .join('\n');
 
-  return `System: ${SYSTEM_PROMPT}
+  return `System: ${DEFAULT_SYSTEM_PROMPT}
 ${historyLines ? `${historyLines}\n` : ''}User: ${newMessage}
 Assistant:`;
 }
