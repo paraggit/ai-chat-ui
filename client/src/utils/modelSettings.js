@@ -1,4 +1,6 @@
 const SETTINGS_KEY = 'hf-chat-pro-model-settings';
+const SYSTEM_PROMPT_KEY = 'hf-chat-pro-system-prompt';
+const DEFAULT_SYSTEM_PROMPT = 'You are a helpful AI assistant.';
 
 export const DEFAULT_MAX_TOKENS = 8192;
 /** @deprecated legacy default — migrated on load */
@@ -112,3 +114,13 @@ export function toApiPayload(settings) {
       Number.isFinite(maxTokens) && maxTokens > 0 ? Math.floor(maxTokens) : DEFAULT_MAX_TOKENS,
   };
 }
+
+export function loadLastSystemPrompt() {
+  return localStorage.getItem(SYSTEM_PROMPT_KEY) || DEFAULT_SYSTEM_PROMPT;
+}
+
+export function saveLastSystemPrompt(prompt) {
+  localStorage.setItem(SYSTEM_PROMPT_KEY, prompt);
+}
+
+export { DEFAULT_SYSTEM_PROMPT };

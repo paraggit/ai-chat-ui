@@ -28,8 +28,10 @@ import { copyMessageText } from '../utils/messageCopy.js';
 
 /**
  * @param {import('../utils/modelSettings.js').loadModelSettings extends () => infer R ? R : never} modelSettings
+ * @param {string} systemPrompt
+ * @param {(prompt: string) => void} [onSystemPromptLoad]
  */
-export function useChat(modelSettings) {
+export function useChat(modelSettings, systemPrompt, onSystemPromptLoad) {
   const [messages, setMessages] = useState(/** @type {Message[]} */ ([]));
   const [sessions, setSessions] = useState(/** @type {ChatSession[]} */ ([]));
   const [isLoading, setIsLoading] = useState(false);
@@ -71,11 +73,14 @@ export function useChat(modelSettings) {
         if (!res.ok) return;
         const data = await res.json();
         setMessages(mapHistory(sid, data.history));
+        if (data.systemPrompt && onSystemPromptLoad) {
+          onSystemPromptLoad(data.systemPrompt);
+        }
       } catch {
         // Server may be down on first load — ignore
       }
     },
-    [mapHistory]
+    [mapHistory, onSystemPromptLoad]
   );
 
   useEffect(() => {
@@ -139,6 +144,7 @@ export function useChat(modelSettings) {
             message: trimmed,
             sessionId,
             images,
+            systemPrompt,
             ...toApiPayload(modelSettings),
           }),
           signal: controller.signal,
@@ -286,7 +292,7 @@ export function useChat(modelSettings) {
         );
       }
     },
-    [isLoading, sessionId, modelSettings, loadSessionList]
+    [isLoading, sessionId, modelSettings, systemPrompt, loadSessionList, loadHistory]
   );
 
   const newChat = useCallback(async () => {

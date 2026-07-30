@@ -1,5 +1,6 @@
 import ModelSettings from './ModelSettings.jsx';
 import ChatHistoryList from './ChatHistoryList.jsx';
+import SystemPrompt from './SystemPrompt.jsx';
 
 /**
  * @param {{
@@ -14,6 +15,8 @@ import ChatHistoryList from './ChatHistoryList.jsx';
  *   settings: { apiKey: string, model: string, endpoint: string },
  *   configured: boolean,
  *   onSaveSettings: (settings: { apiKey: string, model: string, endpoint: string }) => void,
+ *   systemPrompt: string,
+ *   onSystemPromptChange: (prompt: string) => void,
  * }} props
  */
 export default function Sidebar({
@@ -28,6 +31,8 @@ export default function Sidebar({
   settings,
   configured,
   onSaveSettings,
+  systemPrompt,
+  onSystemPromptChange,
 }) {
   return (
     <aside className="flex w-64 shrink-0 flex-col border-r border-gray-200 bg-surface-secondary dark:border-gray-700 dark:bg-surface-dark-secondary">
@@ -68,6 +73,8 @@ export default function Sidebar({
             disabled={chatBusy}
           />
         </div>
+
+        <SystemPrompt value={systemPrompt} onChange={onSystemPromptChange} />
 
         <ModelSettings
           settings={settings}

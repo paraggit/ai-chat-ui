@@ -4,11 +4,18 @@ import MessageList from './components/MessageList.jsx';
 import ChatInput from './components/ChatInput.jsx';
 import { useChat } from './hooks/useChat.js';
 import { useModelSettings } from './hooks/useModelSettings.js';
-import { isLocalProvider } from './utils/modelSettings.js';
+import { isLocalProvider, loadLastSystemPrompt, saveLastSystemPrompt } from './utils/modelSettings.js';
 import { getInitialDarkMode, setDarkMode } from './utils/theme.js';
 
 export default function App() {
   const { settings, configured, updateSettings } = useModelSettings();
+  const [systemPrompt, setSystemPromptState] = useState(loadLastSystemPrompt);
+
+  const handleSystemPromptChange = (prompt) => {
+    setSystemPromptState(prompt);
+    saveLastSystemPrompt(prompt);
+  };
+
   const {
     messages,
     sessions,
@@ -21,7 +28,10 @@ export default function App() {
     newChat,
     selectSession,
     deleteSession,
-  } = useChat(settings);
+  } = useChat(settings, systemPrompt, (prompt) => {
+    setSystemPromptState(prompt);
+    saveLastSystemPrompt(prompt);
+  });
   const [isDark, setIsDark] = useState(getInitialDarkMode);
 
   const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant');
@@ -47,6 +57,8 @@ export default function App() {
         settings={settings}
         configured={configured}
         onSaveSettings={updateSettings}
+        systemPrompt={systemPrompt}
+        onSystemPromptChange={handleSystemPromptChange}
       />
 
       <main className="flex min-w-0 flex-1 flex-col bg-surface-secondary dark:bg-surface-dark-secondary">
