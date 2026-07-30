@@ -307,3 +307,66 @@ export function healthCheck(_req, res) {
     timestamp: new Date().toISOString(),
   });
 }
+
+/**
+ * Edit a user message and regenerate from that point.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ */
+export async function editMessage(req, res) {
+  const { sessionId, messageIndex, newContent } = req.body ?? {};
+
+  if (!sessionId || typeof sessionId !== 'string') {
+    return res.status(400).json({ error: 'sessionId is required' });
+  }
+  if (typeof messageIndex !== 'number' || messageIndex < 0) {
+    return res.status(400).json({ error: 'messageIndex is required' });
+  }
+  const trimmed = typeof newContent === 'string' ? newContent.trim() : '';
+  if (!trimmed) {
+    return res.status(400).json({ error: 'newContent is required' });
+  }
+
+  const history = sessionStore.getHistory(sessionId);
+  if (messageIndex >= history.length) {
+    return res.status(400).json({ error: 'messageIndex out of range' });
+  }
+
+  sessionStore.truncateAt(sessionId, messageIndex);
+
+  req.body = { ...req.body, message: trimmed };
+  return streamChat(req, res);
+}
+
+/**
+ * Regenerate the last assistant response.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ */
+export async function regenerateLastResponse(req, res) {
+  const { sessionId } = req.body ?? {};
+
+  if (!sessionId || typeof sessionId !== 'string') {
+    return res.status(400).json({ error: 'sessionId is required' });
+  }
+
+  const history = sessionStore.getHistory(sessionId);
+  if (history.length < 2) {
+    return res.status(400).json({ error: 'Not enough history to regenerate' });
+  }
+
+  const lastAssistantIndex = history.length - 1;
+  if (history[lastAssistantIndex]?.role !== 'assistant') {
+    return res.status(400).json({ error: 'Last message is not an assistant response' });
+  }
+
+  const lastUserMsg = history[lastAssistantIndex - 1];
+  if (lastUserMsg?.role !== 'user') {
+    return res.status(400).json({ error: 'Could not find the user message to regenerate from' });
+  }
+
+  sessionStore.truncateAt(sessionId, lastAssistantIndex);
+
+  req.body = { ...req.body, message: lastUserMsg.content || '' };
+  return streamChat(req, res);
+}

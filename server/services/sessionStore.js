@@ -173,6 +173,22 @@ class PersistentSessionStore {
   }
 
   /**
+   * Truncate message history at the given index (keeps messages 0..index-1).
+   * Resets summarization state since the truncated messages may have been summarized.
+   * @param {string} sessionId
+   * @param {number} index
+   */
+  truncateAt(sessionId, index) {
+    const session = this._ensure(sessionId);
+    if (index < 0 || index >= session.messages.length) return;
+    session.messages = session.messages.slice(0, index);
+    session.conversationSummary = '';
+    session.longTermMemory = [];
+    session.lastSummarizedIndex = 0;
+    this._persist(sessionId);
+  }
+
+  /**
    * @param {string} sessionId
    * @param {SessionMessage} message
    */
