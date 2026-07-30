@@ -12,6 +12,7 @@ export default function SystemPrompt({ value, onChange }) {
   const timerRef = useRef(null);
 
   useEffect(() => {
+    clearTimeout(timerRef.current);
     setDraft(value);
   }, [value]);
 

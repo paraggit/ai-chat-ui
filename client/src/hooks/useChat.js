@@ -73,8 +73,8 @@ export function useChat(modelSettings, systemPrompt, onSystemPromptLoad) {
         if (!res.ok) return;
         const data = await res.json();
         setMessages(mapHistory(sid, data.history));
-        if (data.systemPrompt && onSystemPromptLoad) {
-          onSystemPromptLoad(data.systemPrompt);
+        if ('systemPrompt' in data && onSystemPromptLoad) {
+          onSystemPromptLoad(data.systemPrompt ?? '');
         }
       } catch {
         // Server may be down on first load — ignore

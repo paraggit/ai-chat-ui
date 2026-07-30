@@ -68,11 +68,8 @@ export async function streamChat(req, res) {
     images: sanitizedImages.length > 0 ? sanitizedImages : undefined,
   });
 
-  if (typeof systemPrompt === 'string' && systemPrompt.trim()) {
-    const existing = sessionStore.getSystemPrompt(sessionId);
-    if (!existing) {
-      sessionStore.setSystemPrompt(sessionId, systemPrompt.trim());
-    }
+  if (typeof systemPrompt === 'string') {
+    sessionStore.setSystemPrompt(sessionId, systemPrompt.trim());
   }
 
   const fullHistory = sessionStore.getHistory(sessionId);
@@ -436,11 +433,8 @@ export async function compareChat(req, res) {
 
   const sessionSystemPrompt = sessionStore.getSystemPrompt(sessionId) || (typeof systemPrompt === 'string' ? systemPrompt.trim() : '');
 
-  if (typeof systemPrompt === 'string' && systemPrompt.trim()) {
-    const existing = sessionStore.getSystemPrompt(sessionId);
-    if (!existing) {
-      sessionStore.setSystemPrompt(sessionId, systemPrompt.trim());
-    }
+  if (typeof systemPrompt === 'string') {
+    sessionStore.setSystemPrompt(sessionId, systemPrompt.trim());
   }
 
   initSSE(res);

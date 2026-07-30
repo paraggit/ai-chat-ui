@@ -172,7 +172,7 @@ function buildChatRequestBody(config, messages, overrides = {}) {
     stream: overrides.stream ?? false,
   };
   // Only include if defined (some APIs reject null/undefined values)
-  if (body.top_p === undefined) delete body.top_p;
+  if (body.top_p === undefined || body.top_p === 1) delete body.top_p;
   if (body.frequency_penalty === undefined || body.frequency_penalty === 0) delete body.frequency_penalty;
 
   if (isLocalProvider(config.provider)) {
