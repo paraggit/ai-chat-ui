@@ -22,6 +22,7 @@ export async function streamChat(req, res) {
     visionModel,
     imageGenModel,
     maxTokens,
+    systemPrompt,
   } = req.body ?? {};
 
   const sanitizedImages = sanitizeImages(images);
@@ -61,6 +62,13 @@ export async function streamChat(req, res) {
     images: sanitizedImages.length > 0 ? sanitizedImages : undefined,
   });
 
+  if (typeof systemPrompt === 'string' && systemPrompt.trim()) {
+    const existing = sessionStore.getSystemPrompt(sessionId);
+    if (!existing) {
+      sessionStore.setSystemPrompt(sessionId, systemPrompt.trim());
+    }
+  }
+
   const fullHistory = sessionStore.getHistory(sessionId);
   const useContextMemory =
     sanitizedImages.length === 0 && !wantsImageGeneration(trimmedMessage);
@@ -68,11 +76,13 @@ export async function streamChat(req, res) {
   initSSE(res);
   sendStatus(res, useContextMemory ? 'Preparing context…' : 'Connecting…');
 
+  const sessionSystemPrompt = sessionStore.getSystemPrompt(sessionId) || (typeof systemPrompt === 'string' ? systemPrompt.trim() : '');
+
   /** @type {Awaited<ReturnType<typeof prepareConversationContext>> | null} */
   let contextInfo = null;
   if (useContextMemory) {
     try {
-      contextInfo = await prepareConversationContext(sessionId, fullHistory, hfConfig);
+      contextInfo = await prepareConversationContext(sessionId, fullHistory, hfConfig, sessionSystemPrompt || undefined);
       if (contextInfo.summarized) {
         sendStatus(res, 'Conversation memory updated…');
       }
@@ -238,6 +248,7 @@ export function getHistory(req, res) {
 
   const history = sessionStore.getHistory(sessionId);
   const memory = sessionStore.getMemory(sessionId);
+  const systemPrompt = sessionStore.getSystemPrompt(sessionId);
   const sessions = sessionStore.listSessions();
   const meta = sessions.find((s) => s.id === sessionId);
 
@@ -246,6 +257,7 @@ export function getHistory(req, res) {
     title: meta?.title ?? 'New chat',
     history,
     memory,
+    systemPrompt,
   });
 }
 

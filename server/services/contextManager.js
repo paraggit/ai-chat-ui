@@ -13,8 +13,9 @@ const TRIM_TARGET_RATIO = 0.85;
  * @param {string} sessionId
  * @param {Array<{ role: string, content: string }>} history
  * @param {import('./hfService.js').HFConfig} config
+ * @param {string} [customSystemPrompt]
  */
-export async function prepareConversationContext(sessionId, history, config) {
+export async function prepareConversationContext(sessionId, history, config, customSystemPrompt) {
   const maxRecent = Number(process.env.CONTEXT_MAX_RECENT_MESSAGES) || DEFAULT_MAX_RECENT;
   const isLocal = config.provider === 'local';
   const defaultBudget = isLocal ? DEFAULT_MAX_CONTEXT_TOKENS_LOCAL : DEFAULT_MAX_CONTEXT_TOKENS_HF;
@@ -55,7 +56,7 @@ export async function prepareConversationContext(sessionId, history, config) {
     longTermMemory: memory.longTermMemory,
   };
 
-  let messages = buildModelMessages(recentHistory, memoryForPrompt);
+  let messages = buildModelMessages(recentHistory, memoryForPrompt, customSystemPrompt);
   let tokenEstimate = estimateMessagesTokens(messages);
   let trimmedMessages = 0;
 
@@ -67,7 +68,7 @@ export async function prepareConversationContext(sessionId, history, config) {
       recentHistory = recentHistory.slice(1);
     }
     trimmedMessages += 1;
-    messages = buildModelMessages(recentHistory, memoryForPrompt);
+    messages = buildModelMessages(recentHistory, memoryForPrompt, customSystemPrompt);
     tokenEstimate = estimateMessagesTokens(messages);
   }
 
@@ -79,7 +80,7 @@ export async function prepareConversationContext(sessionId, history, config) {
         Math.floor(maxContextTokens * 0.15)
       ),
     };
-    messages = buildModelMessages(recentHistory, memoryForPrompt);
+    messages = buildModelMessages(recentHistory, memoryForPrompt, customSystemPrompt);
     tokenEstimate = estimateMessagesTokens(messages);
   }
 
@@ -88,7 +89,7 @@ export async function prepareConversationContext(sessionId, history, config) {
       ...memoryForPrompt,
       longTermMemory: memoryForPrompt.longTermMemory.slice(-3),
     };
-    messages = buildModelMessages(recentHistory, memoryForPrompt);
+    messages = buildModelMessages(recentHistory, memoryForPrompt, customSystemPrompt);
     tokenEstimate = estimateMessagesTokens(messages);
   }
 

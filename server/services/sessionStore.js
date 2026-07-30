@@ -28,6 +28,7 @@ const DATA_DIR =
  *   conversationSummary: string,
  *   longTermMemory: string[],
  *   lastSummarizedIndex: number,
+ *   systemPrompt: string,
  * }} SessionData
  */
 
@@ -89,6 +90,7 @@ class PersistentSessionStore {
       conversationSummary: sanitizeMemoryText(data.conversationSummary || ''),
       longTermMemory: sanitizeMemoryFacts(data.longTermMemory || []),
       lastSummarizedIndex: Number.isFinite(data.lastSummarizedIndex) ? data.lastSummarizedIndex : 0,
+      systemPrompt: typeof data.systemPrompt === 'string' ? data.systemPrompt : '',
     };
   }
 
@@ -108,6 +110,7 @@ class PersistentSessionStore {
         conversationSummary: '',
         longTermMemory: [],
         lastSummarizedIndex: 0,
+        systemPrompt: '',
       });
     }
     return /** @type {SessionData} */ (this.sessions.get(sessionId));
@@ -211,6 +214,23 @@ class PersistentSessionStore {
   setLastSummarizedIndex(sessionId, index) {
     this._ensure(sessionId).lastSummarizedIndex = Math.max(0, index);
     this._persist(sessionId);
+  }
+
+  /**
+   * @param {string} sessionId
+   * @param {string} prompt
+   */
+  setSystemPrompt(sessionId, prompt) {
+    this._ensure(sessionId).systemPrompt = prompt;
+    this._persist(sessionId);
+  }
+
+  /**
+   * @param {string} sessionId
+   * @returns {string}
+   */
+  getSystemPrompt(sessionId) {
+    return this._ensure(sessionId).systemPrompt;
   }
 
   /**
