@@ -4,7 +4,7 @@
  */
 
 const WINDOW_MS = 60_000;
-const MAX_REQUESTS = 30;
+const MAX_REQUESTS = 120;
 
 /** @type {Map<string, { count: number, resetAt: number }>} */
 const buckets = new Map();
