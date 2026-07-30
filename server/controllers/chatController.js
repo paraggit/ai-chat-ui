@@ -389,3 +389,100 @@ export function importSession(req, res) {
     res.status(400).json({ error: error.message || 'Import failed' });
   }
 }
+
+/**
+ * Compare responses from two models side-by-side.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ */
+export async function compareChat(req, res) {
+  const {
+    message, sessionId, model2, provider, hfToken, model, endpoint,
+    visionModel, imageGenModel, maxTokens, systemPrompt,
+    temperature, topP, frequencyPenalty,
+  } = req.body ?? {};
+
+  const trimmed = typeof message === 'string' ? message.trim() : '';
+  if (!trimmed) return res.status(400).json({ error: 'message is required' });
+  if (!sessionId) return res.status(400).json({ error: 'sessionId is required' });
+  if (!model2 || typeof model2 !== 'string') return res.status(400).json({ error: 'model2 is required' });
+
+  let config1, config2;
+  try {
+    const base = {
+      provider: typeof provider === 'string' ? provider.trim() : undefined,
+      token: typeof hfToken === 'string' ? hfToken.trim() : undefined,
+      endpoint: typeof endpoint === 'string' ? endpoint.trim() : undefined,
+      visionModel: typeof visionModel === 'string' ? visionModel.trim() : undefined,
+      imageGenModel: typeof imageGenModel === 'string' ? imageGenModel.trim() : undefined,
+      maxTokens: maxTokens !== undefined ? Number(maxTokens) : undefined,
+      temperature: typeof temperature === 'number' ? temperature : undefined,
+      topP: typeof topP === 'number' ? topP : undefined,
+      frequencyPenalty: typeof frequencyPenalty === 'number' ? frequencyPenalty : undefined,
+    };
+    config1 = resolveHFConfig({ ...base, model: typeof model === 'string' ? model.trim() : undefined });
+    config2 = resolveHFConfig({ ...base, model: model2.trim() });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
+
+  sessionStore.appendMessage(sessionId, { role: 'user', content: trimmed });
+  const fullHistory = sessionStore.getHistory(sessionId);
+  const history = fullHistory.slice(0, -1);
+
+  const sessionSystemPrompt = sessionStore.getSystemPrompt(sessionId) || (typeof systemPrompt === 'string' ? systemPrompt.trim() : '');
+
+  initSSE(res);
+  sendStatus(res, 'Comparing models…');
+
+  const sendModelToken = (modelLabel, token) => {
+    if (!res.writableEnded) {
+      res.write(`data: ${JSON.stringify({ model: modelLabel, token })}\n\n`);
+      res.flush?.();
+    }
+  };
+
+  const responses = { model1: '', model2: '' };
+
+  try {
+    await Promise.all([
+      chat(history, trimmed, config1, [], {
+        onToken: (t) => { responses.model1 += t; sendModelToken(config1.model, t); },
+      }).then((r) => { responses.model1 = r.text || responses.model1; }),
+      chat(history, trimmed, config2, [], {
+        onToken: (t) => { responses.model2 += t; sendModelToken(config2.model, t); },
+      }).then((r) => { responses.model2 = r.text || responses.model2; }),
+    ]);
+
+    if (!res.writableEnded) {
+      res.write(`data: ${JSON.stringify({
+        compare: true,
+        responses: [
+          { model: config1.model, content: responses.model1 },
+          { model: config2.model, content: responses.model2 },
+        ],
+      })}\n\n`);
+    }
+
+    sendDone(res);
+  } catch (error) {
+    if (!res.writableEnded) {
+      sendError(res, error.message);
+      sendDone(res);
+    }
+  }
+}
+
+/**
+ * Store a chosen response from a compare operation.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ */
+export function keepResponse(req, res) {
+  const { sessionId, content } = req.body ?? {};
+  if (!sessionId || typeof content !== 'string') {
+    return res.status(400).json({ error: 'sessionId and content required' });
+  }
+  sessionStore.appendMessage(sessionId, { role: 'assistant', content });
+  res.json({ success: true });
+}

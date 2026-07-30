@@ -8,9 +8,10 @@ import MessageBubble from './MessageBubble.jsx';
  *   isLoading: boolean,
  *   onEdit: (messageIndex: number, newContent: string) => void,
  *   onRegenerate: () => void,
+ *   onKeepCompare?: (messageId: string, responseIndex: number) => void,
  * }} props
  */
-export default function MessageList({ messages, isDark, isLoading, onEdit, onRegenerate }) {
+export default function MessageList({ messages, isDark, isLoading, onEdit, onRegenerate, onKeepCompare }) {
   const bottomRef = useRef(null);
 
   useEffect(() => {
@@ -56,6 +57,7 @@ export default function MessageList({ messages, isDark, isLoading, onEdit, onReg
               isLoading={isLoading}
               onEdit={onEdit}
               onRegenerate={onRegenerate}
+              onKeepCompare={onKeepCompare}
             />
           ))}
           <div ref={bottomRef} />

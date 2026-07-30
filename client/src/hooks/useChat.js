@@ -562,6 +562,152 @@ export function useChat(modelSettings, systemPrompt, onSystemPromptLoad) {
     }
   }, [isLoading, sessionId, modelSettings, systemPrompt, loadSessionList, loadHistory]);
 
+  const sendCompare = useCallback(
+    async (text, model2) => {
+      const trimmed = text.trim();
+      if (!trimmed || isLoading || !model2?.trim()) return;
+
+      setError(null);
+      setIsLoading(true);
+      isSendingRef.current = true;
+
+      const userMsg = { id: crypto.randomUUID(), role: 'user', content: trimmed };
+      const compareMsg = {
+        id: crypto.randomUUID(),
+        role: 'assistant',
+        content: '',
+        streaming: true,
+        status: 'Comparing models…',
+        compare: true,
+        compareResponses: [
+          { model: modelSettings.model, content: '' },
+          { model: model2.trim(), content: '' },
+        ],
+      };
+
+      setMessages((prev) => [...prev, userMsg, compareMsg]);
+      const compareId = compareMsg.id;
+
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      try {
+        const res = await fetch(apiUrl('/api/chat/compare'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            message: trimmed,
+            sessionId,
+            model2: model2.trim(),
+            systemPrompt,
+            ...toApiPayload(modelSettings),
+          }),
+          signal: controller.signal,
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || `Compare failed (${res.status})`);
+        }
+
+        const reader = res.body?.getReader();
+        if (!reader) throw new Error('No response stream');
+
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const payload = line.slice(6).trim();
+            if (payload === '[DONE]') {
+              setMessages((prev) =>
+                prev.map((m) => (m.id === compareId ? { ...m, streaming: false, status: undefined } : m))
+              );
+              continue;
+            }
+            try {
+              const parsed = JSON.parse(payload);
+              if (parsed.model && parsed.token) {
+                setMessages((prev) =>
+                  prev.map((m) => {
+                    if (m.id !== compareId) return m;
+                    const updated = (m.compareResponses || []).map((r) =>
+                      r.model === parsed.model
+                        ? { ...r, content: r.content + parsed.token }
+                        : r
+                    );
+                    return { ...m, compareResponses: updated, status: undefined };
+                  })
+                );
+              }
+              if (parsed.compare && parsed.responses) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === compareId
+                      ? { ...m, compareResponses: parsed.responses, streaming: false }
+                      : m
+                  )
+                );
+              }
+              if (parsed.status) {
+                setMessages((prev) =>
+                  prev.map((m) => (m.id === compareId ? { ...m, status: parsed.status } : m))
+                );
+              }
+            } catch { /* ignore */ }
+          }
+        }
+
+        await loadSessionList();
+        isSendingRef.current = false;
+      } catch (err) {
+        if (err.name === 'AbortError') return;
+        setError(err.message || 'Compare failed');
+      } finally {
+        isSendingRef.current = false;
+        activeAssistantIdRef.current = null;
+        setIsLoading(false);
+      }
+    },
+    [isLoading, sessionId, modelSettings, systemPrompt, loadSessionList]
+  );
+
+  const keepCompareResponse = useCallback(
+    async (messageId, responseIndex) => {
+      setMessages((prev) =>
+        prev.map((m) => {
+          if (m.id !== messageId || !m.compareResponses) return m;
+          const kept = m.compareResponses[responseIndex];
+          return {
+            ...m,
+            content: kept?.content || '',
+            compare: false,
+            compareResponses: undefined,
+          };
+        })
+      );
+
+      const msg = messages.find((m) => m.id === messageId);
+      const kept = msg?.compareResponses?.[responseIndex];
+      if (kept) {
+        await fetch(apiUrl('/api/chat/keep'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId, content: kept.content }),
+        }).catch(() => {});
+      }
+    },
+    [messages, sessionId]
+  );
+
   return {
     messages,
     sessions,
@@ -577,5 +723,7 @@ export function useChat(modelSettings, systemPrompt, onSystemPromptLoad) {
     clearChat: newChat,
     editMessage,
     regenerateLastResponse,
+    sendCompare,
+    keepCompareResponse,
   };
 }

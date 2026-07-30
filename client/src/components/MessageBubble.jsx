@@ -4,6 +4,7 @@ import MetadataModal, { hasMetadata } from './MetadataModal.jsx';
 import MarkdownContent from './MarkdownContent.jsx';
 import ReasoningBlock, { getReasoning } from './ReasoningBlock.jsx';
 import { copyMessageText } from '../utils/messageCopy.js';
+import CompareView from './CompareView.jsx';
 
 /**
  * @param {{ src: string, alt: string, isUser?: boolean }} props
@@ -30,6 +31,8 @@ function MessageImages({ src, alt, isUser }) {
  *     metadata?: Record<string, unknown>,
  *     streaming?: boolean,
  *     status?: string,
+ *     compare?: boolean,
+ *     compareResponses?: Array<{ model: string, content: string }>,
  *   },
  *   isDark: boolean,
  *   messageIndex: number,
@@ -37,9 +40,10 @@ function MessageImages({ src, alt, isUser }) {
  *   isLoading: boolean,
  *   onEdit: (messageIndex: number, newContent: string) => void,
  *   onRegenerate: () => void,
+ *   onKeepCompare?: (messageId: string, responseIndex: number) => void,
  * }} props
  */
-export default function MessageBubble({ message, isDark, messageIndex, isLast, isLoading, onEdit, onRegenerate }) {
+export default function MessageBubble({ message, isDark, messageIndex, isLast, isLoading, onEdit, onRegenerate, onKeepCompare }) {
   const [copied, setCopied] = useState(false);
   const [showMetadata, setShowMetadata] = useState(false);
   const [editing, setEditing] = useState(false);
@@ -61,14 +65,22 @@ export default function MessageBubble({ message, isDark, messageIndex, isLast, i
 
   return (
     <>
-      <div className={`group flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}>
-        <div
-          className={`relative min-w-0 max-w-[85%] overflow-hidden rounded-2xl px-4 py-3 ${
-            isUser
-              ? 'bg-accent text-white'
-              : 'bg-white dark:bg-surface-dark border border-gray-200 dark:border-gray-700'
-          }`}
-        >
+      {!isUser && message.compare && message.compareResponses ? (
+        <CompareView
+          responses={message.compareResponses}
+          onKeep={(i) => onKeepCompare?.(message.id, i)}
+          isDark={isDark}
+          streaming={message.streaming || false}
+        />
+      ) : (
+        <div className={`group flex w-full ${isUser ? 'justify-end' : 'justify-start'}`}>
+          <div
+            className={`relative min-w-0 max-w-[85%] overflow-hidden rounded-2xl px-4 py-3 ${
+              isUser
+                ? 'bg-accent text-white'
+                : 'bg-white dark:bg-surface-dark border border-gray-200 dark:border-gray-700'
+            }`}
+          >
           {isUser && !message.streaming && (
             <div className="absolute -top-2 -left-2 hidden group-hover:flex">
               <button
@@ -227,8 +239,9 @@ export default function MessageBubble({ message, isDark, messageIndex, isLast, i
               )}
             </div>
           )}
+          </div>
         </div>
-      </div>
+      )}
 
       {showMetadata && metadataAvailable && (
         <MetadataModal metadata={message.metadata} onClose={() => setShowMetadata(false)} />

@@ -11,6 +11,8 @@ import { importSessionFromFile } from './utils/export.js';
 export default function App() {
   const { settings, configured, updateSettings } = useModelSettings();
   const [systemPrompt, setSystemPromptState] = useState(loadLastSystemPrompt);
+  const [compareMode, setCompareMode] = useState(false);
+  const [compareModel, setCompareModel] = useState('');
 
   const handleSystemPromptChange = (prompt) => {
     setSystemPromptState(prompt);
@@ -31,6 +33,8 @@ export default function App() {
     deleteSession,
     editMessage,
     regenerateLastResponse,
+    sendCompare,
+    keepCompareResponse,
   } = useChat(settings, systemPrompt, (prompt) => {
     setSystemPromptState(prompt);
     saveLastSystemPrompt(prompt);
@@ -84,6 +88,7 @@ export default function App() {
           isLoading={isLoading}
           onEdit={editMessage}
           onRegenerate={regenerateLastResponse}
+          onKeepCompare={keepCompareResponse}
         />
         <ChatInput
           onSend={sendMessage}
@@ -94,6 +99,11 @@ export default function App() {
           disabled={isLoading}
           configured={configured}
           localMode={isLocalProvider(settings)}
+          compareMode={compareMode}
+          onToggleCompare={() => setCompareMode((p) => !p)}
+          compareModel={compareModel}
+          onCompareModelChange={setCompareModel}
+          onCompare={sendCompare}
         />
       </main>
     </div>
