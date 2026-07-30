@@ -370,3 +370,22 @@ export async function regenerateLastResponse(req, res) {
   req.body = { ...req.body, message: lastUserMsg.content || '' };
   return streamChat(req, res);
 }
+
+/**
+ * Import a conversation from JSON.
+ * @param {import('express').Request} req
+ * @param {import('express').Response} res
+ */
+export function importSession(req, res) {
+  const data = req.body;
+  if (!data || typeof data !== 'object') {
+    return res.status(400).json({ error: 'Invalid import data' });
+  }
+
+  try {
+    const sessionId = sessionStore.importSession(data);
+    res.json({ success: true, sessionId });
+  } catch (error) {
+    res.status(400).json({ error: error.message || 'Import failed' });
+  }
+}

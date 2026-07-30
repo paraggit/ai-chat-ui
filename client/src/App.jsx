@@ -6,6 +6,7 @@ import { useChat } from './hooks/useChat.js';
 import { useModelSettings } from './hooks/useModelSettings.js';
 import { isLocalProvider, loadLastSystemPrompt, saveLastSystemPrompt } from './utils/modelSettings.js';
 import { getInitialDarkMode, setDarkMode } from './utils/theme.js';
+import { importSessionFromFile } from './utils/export.js';
 
 export default function App() {
   const { settings, configured, updateSettings } = useModelSettings();
@@ -36,6 +37,12 @@ export default function App() {
   });
   const [isDark, setIsDark] = useState(getInitialDarkMode);
 
+  const handleImport = async (file) => {
+    const newId = await importSessionFromFile(file);
+    selectSession(newId);
+    return newId;
+  };
+
   const lastAssistant = [...messages].reverse().find((m) => m.role === 'assistant');
   const canCopyLast = Boolean(lastAssistant?.content?.trim() || lastAssistant?.metadata?.reasoning);
 
@@ -55,6 +62,7 @@ export default function App() {
         sessions={sessions}
         onSelectSession={selectSession}
         onDeleteSession={deleteSession}
+        onImport={handleImport}
         chatBusy={isLoading}
         settings={settings}
         configured={configured}

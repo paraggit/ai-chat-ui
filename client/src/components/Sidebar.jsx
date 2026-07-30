@@ -1,3 +1,4 @@
+import { useRef } from 'react';
 import ModelSettings from './ModelSettings.jsx';
 import ChatHistoryList from './ChatHistoryList.jsx';
 import SystemPrompt from './SystemPrompt.jsx';
@@ -11,6 +12,7 @@ import SystemPrompt from './SystemPrompt.jsx';
  *   sessions: Array<{ id: string, title: string, updatedAt: string, messageCount: number }>,
  *   onSelectSession: (id: string) => void,
  *   onDeleteSession: (id: string) => void,
+ *   onImport: (file: File) => Promise<string>,
  *   chatBusy?: boolean,
  *   settings: { apiKey: string, model: string, endpoint: string },
  *   configured: boolean,
@@ -27,6 +29,7 @@ export default function Sidebar({
   sessions,
   onSelectSession,
   onDeleteSession,
+  onImport,
   chatBusy,
   settings,
   configured,
@@ -34,6 +37,7 @@ export default function Sidebar({
   systemPrompt,
   onSystemPromptChange,
 }) {
+  const importRef = useRef(null);
   return (
     <aside className="flex w-64 shrink-0 flex-col border-r border-gray-200 bg-surface-secondary dark:border-gray-700 dark:bg-surface-dark-secondary">
       <div className="flex items-center gap-2 border-b border-gray-200 px-4 py-4 dark:border-gray-700">
@@ -62,6 +66,37 @@ export default function Sidebar({
           </svg>
           New chat
         </button>
+
+        <div className="mt-2">
+          <input
+            ref={importRef}
+            type="file"
+            accept=".json"
+            className="hidden"
+            onChange={async (e) => {
+              const file = e.target.files?.[0];
+              if (!file) return;
+              try {
+                const newId = await onImport(file);
+                if (newId) onSelectSession(newId);
+              } catch (err) {
+                console.error('Import failed:', err);
+              }
+              if (importRef.current) importRef.current.value = '';
+            }}
+          />
+          <button
+            type="button"
+            onClick={() => importRef.current?.click()}
+            disabled={chatBusy}
+            className="flex w-full items-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-sm font-medium transition hover:bg-white disabled:opacity-50 dark:border-gray-600 dark:hover:bg-surface-dark"
+          >
+            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+            </svg>
+            Import chat
+          </button>
+        </div>
 
         <div className="mt-4 px-1">
           <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-400">Chat history</p>

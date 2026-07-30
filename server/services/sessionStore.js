@@ -285,6 +285,29 @@ class PersistentSessionStore {
   hasSession(sessionId) {
     return this.sessions.has(sessionId);
   }
+
+  /**
+   * Import a session from external data. Assigns a new ID.
+   * @param {{ title?: string, history?: SessionMessage[], systemPrompt?: string }} data
+   * @returns {string} the new sessionId
+   */
+  importSession(data) {
+    const sessionId = globalThis.crypto?.randomUUID?.() || `imported-${Date.now()}`;
+    const now = new Date().toISOString();
+    this.sessions.set(sessionId, {
+      id: sessionId,
+      title: data.title || 'Imported chat',
+      createdAt: now,
+      updatedAt: now,
+      messages: Array.isArray(data.history) ? data.history : [],
+      conversationSummary: '',
+      longTermMemory: [],
+      lastSummarizedIndex: 0,
+      systemPrompt: typeof data.systemPrompt === 'string' ? data.systemPrompt : '',
+    });
+    this._persist(sessionId);
+    return sessionId;
+  }
 }
 
 export const sessionStore = new PersistentSessionStore();
