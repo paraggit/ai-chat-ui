@@ -135,7 +135,7 @@ export function toApiPayload(settings) {
 }
 
 export function loadLastSystemPrompt() {
-  return localStorage.getItem(SYSTEM_PROMPT_KEY) || DEFAULT_SYSTEM_PROMPT;
+  return localStorage.getItem(SYSTEM_PROMPT_KEY) ?? DEFAULT_SYSTEM_PROMPT;
 }
 
 export function saveLastSystemPrompt(prompt) {

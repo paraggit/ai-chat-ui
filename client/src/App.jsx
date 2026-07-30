@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import Sidebar from './components/Sidebar.jsx';
 import MessageList from './components/MessageList.jsx';
 import ChatInput from './components/ChatInput.jsx';
@@ -19,6 +19,11 @@ export default function App() {
     saveLastSystemPrompt(prompt);
   };
 
+  const handleSystemPromptLoad = useCallback((prompt) => {
+    setSystemPromptState(prompt);
+    saveLastSystemPrompt(prompt);
+  }, []);
+
   const {
     messages,
     sessions,
@@ -35,10 +40,7 @@ export default function App() {
     regenerateLastResponse,
     sendCompare,
     keepCompareResponse,
-  } = useChat(settings, systemPrompt, (prompt) => {
-    setSystemPromptState(prompt);
-    saveLastSystemPrompt(prompt);
-  });
+  } = useChat(settings, systemPrompt, handleSystemPromptLoad);
   const [isDark, setIsDark] = useState(getInitialDarkMode);
 
   const handleImport = async (file) => {
