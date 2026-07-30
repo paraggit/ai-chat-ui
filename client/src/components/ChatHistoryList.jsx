@@ -126,7 +126,6 @@ export default function ChatHistoryList({
                     e.stopPropagation();
                     onDelete(session.id);
                   }}
-                  disabled={disabled}
                   className="rounded p-1 text-gray-400 opacity-0 transition hover:bg-red-50 hover:text-red-500 group-hover:opacity-100 dark:hover:bg-red-950/40"
                   title="Delete chat"
                   aria-label={`Delete ${session.title}`}
