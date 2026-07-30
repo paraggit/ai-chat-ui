@@ -342,6 +342,226 @@ export function useChat(modelSettings, systemPrompt, onSystemPromptLoad) {
     return copyMessageText(target);
   }, [messages]);
 
+  const editMessage = useCallback(
+    async (messageIndex, newContent) => {
+      if (isLoading) return;
+      const trimmed = newContent.trim();
+      if (!trimmed) return;
+
+      setError(null);
+      setIsLoading(true);
+      isSendingRef.current = true;
+
+      // Truncate local messages and add the edited user message
+      setMessages((prev) => {
+        const kept = prev.slice(0, messageIndex);
+        return [
+          ...kept,
+          { id: crypto.randomUUID(), role: 'user', content: trimmed },
+          { id: crypto.randomUUID(), role: 'assistant', content: '', streaming: true, status: 'Editing…' },
+        ];
+      });
+
+      const assistantId = crypto.randomUUID();
+      setMessages((prev) => {
+        const last = prev[prev.length - 1];
+        return prev.map((m) => (m === last ? { ...m, id: assistantId } : m));
+      });
+      activeAssistantIdRef.current = assistantId;
+
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      try {
+        const res = await fetch(apiUrl('/api/chat/edit'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId,
+            messageIndex,
+            newContent: trimmed,
+            systemPrompt,
+            ...toApiPayload(modelSettings),
+          }),
+          signal: controller.signal,
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || `Edit failed (${res.status})`);
+        }
+
+        const reader = res.body?.getReader();
+        if (!reader) throw new Error('No response stream');
+
+        const decoder = new TextDecoder();
+        let buffer = '';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() ?? '';
+
+          for (const line of lines) {
+            if (!line.startsWith('data: ')) continue;
+            const payload = line.slice(6).trim();
+            if (payload === '[DONE]') {
+              setMessages((prev) =>
+                prev.map((m) => (m.id === assistantId ? { ...m, streaming: false } : m))
+              );
+              continue;
+            }
+            try {
+              const parsed = JSON.parse(payload);
+              if (parsed.token) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId
+                      ? { ...m, content: m.content + parsed.token, status: undefined }
+                      : m
+                  )
+                );
+              }
+              if (parsed.message) {
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantId
+                      ? { ...m, content: parsed.message, metadata: parsed.metadata ?? m.metadata, status: undefined }
+                      : m
+                  )
+                );
+              }
+              if (parsed.status) {
+                setMessages((prev) =>
+                  prev.map((m) => (m.id === assistantId ? { ...m, status: parsed.status } : m))
+                );
+              }
+            } catch { /* ignore malformed */ }
+          }
+        }
+
+        await loadSessionList();
+        isSendingRef.current = false;
+        await loadHistory(sessionId);
+      } catch (err) {
+        if (err.name === 'AbortError') return;
+        setError(err.message || 'Edit failed');
+      } finally {
+        isSendingRef.current = false;
+        activeAssistantIdRef.current = null;
+        setIsLoading(false);
+      }
+    },
+    [isLoading, sessionId, modelSettings, systemPrompt, loadSessionList, loadHistory]
+  );
+
+  const regenerateLastResponse = useCallback(async () => {
+    if (isLoading) return;
+
+    setError(null);
+    setIsLoading(true);
+    isSendingRef.current = true;
+
+    // Remove last assistant message and add a new streaming placeholder
+    const assistantId = crypto.randomUUID();
+    activeAssistantIdRef.current = assistantId;
+
+    setMessages((prev) => {
+      const withoutLast = prev.slice(0, -1);
+      return [
+        ...withoutLast,
+        { id: assistantId, role: 'assistant', content: '', streaming: true, status: 'Regenerating…' },
+      ];
+    });
+
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    try {
+      const res = await fetch(apiUrl('/api/chat/regenerate'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId,
+          systemPrompt,
+          ...toApiPayload(modelSettings),
+        }),
+        signal: controller.signal,
+      });
+
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.error || `Regenerate failed (${res.status})`);
+      }
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('No response stream');
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const payload = line.slice(6).trim();
+          if (payload === '[DONE]') {
+            setMessages((prev) =>
+              prev.map((m) => (m.id === assistantId ? { ...m, streaming: false } : m))
+            );
+            continue;
+          }
+          try {
+            const parsed = JSON.parse(payload);
+            if (parsed.token) {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantId
+                    ? { ...m, content: m.content + parsed.token, status: undefined }
+                    : m
+                )
+              );
+            }
+            if (parsed.message) {
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantId
+                    ? { ...m, content: parsed.message, metadata: parsed.metadata ?? m.metadata, status: undefined }
+                    : m
+                )
+              );
+            }
+            if (parsed.status) {
+              setMessages((prev) =>
+                prev.map((m) => (m.id === assistantId ? { ...m, status: parsed.status } : m))
+              );
+            }
+          } catch { /* ignore malformed */ }
+        }
+      }
+
+      await loadSessionList();
+      isSendingRef.current = false;
+      await loadHistory(sessionId);
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+      setError(err.message || 'Regenerate failed');
+    } finally {
+      isSendingRef.current = false;
+      activeAssistantIdRef.current = null;
+      setIsLoading(false);
+    }
+  }, [isLoading, sessionId, modelSettings, systemPrompt, loadSessionList, loadHistory]);
+
   return {
     messages,
     sessions,
@@ -355,5 +575,7 @@ export function useChat(modelSettings, systemPrompt, onSystemPromptLoad) {
     selectSession,
     deleteSession,
     clearChat: newChat,
+    editMessage,
+    regenerateLastResponse,
   };
 }

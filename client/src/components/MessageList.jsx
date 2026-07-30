@@ -2,9 +2,15 @@ import { useEffect, useRef } from 'react';
 import MessageBubble from './MessageBubble.jsx';
 
 /**
- * @param {{ messages: Array<{ id: string, role: string, content: string, streaming?: boolean }>, isDark: boolean }} props
+ * @param {{
+ *   messages: Array<{ id: string, role: string, content: string, streaming?: boolean }>,
+ *   isDark: boolean,
+ *   isLoading: boolean,
+ *   onEdit: (messageIndex: number, newContent: string) => void,
+ *   onRegenerate: () => void,
+ * }} props
  */
-export default function MessageList({ messages, isDark }) {
+export default function MessageList({ messages, isDark, isLoading, onEdit, onRegenerate }) {
   const bottomRef = useRef(null);
 
   useEffect(() => {
@@ -40,8 +46,17 @@ export default function MessageList({ messages, isDark }) {
         </div>
       ) : (
         <div className="mx-auto flex w-full min-w-0 max-w-3xl flex-col gap-4">
-          {messages.map((message) => (
-            <MessageBubble key={message.id} message={message} isDark={isDark} />
+          {messages.map((msg, index) => (
+            <MessageBubble
+              key={msg.id}
+              message={msg}
+              isDark={isDark}
+              messageIndex={index}
+              isLast={index === messages.length - 1}
+              isLoading={isLoading}
+              onEdit={onEdit}
+              onRegenerate={onRegenerate}
+            />
           ))}
           <div ref={bottomRef} />
         </div>

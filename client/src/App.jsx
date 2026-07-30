@@ -28,6 +28,8 @@ export default function App() {
     newChat,
     selectSession,
     deleteSession,
+    editMessage,
+    regenerateLastResponse,
   } = useChat(settings, systemPrompt, (prompt) => {
     setSystemPromptState(prompt);
     saveLastSystemPrompt(prompt);
@@ -68,7 +70,13 @@ export default function App() {
           </div>
         )}
 
-        <MessageList messages={messages} isDark={isDark} />
+        <MessageList
+          messages={messages}
+          isDark={isDark}
+          isLoading={isLoading}
+          onEdit={editMessage}
+          onRegenerate={regenerateLastResponse}
+        />
         <ChatInput
           onSend={sendMessage}
           onStop={stopGeneration}
